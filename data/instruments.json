@@ -1,0 +1,72 @@
+[
+  {
+    "id": "e67c27d45e2a",
+    "code": "INS-001",
+    "name": "电子天平",
+    "model": "FA2004",
+    "manufacturer": "上海精科",
+    "location": "理化实验室A",
+    "cycle_days": 365,
+    "last_calibration_date": "2025-06-10",
+    "owner": "operator1",
+    "remark": "万分之一精度",
+    "created_at": "2026-06-15",
+    "is_active": true
+  },
+  {
+    "id": "a91723f65d2e",
+    "code": "INS-002",
+    "name": "数字万用表",
+    "model": "Fluke 8846A",
+    "manufacturer": "Fluke",
+    "location": "电气实验室",
+    "cycle_days": 180,
+    "last_calibration_date": "2025-11-27",
+    "owner": "operator2",
+    "remark": "6.5位高精度",
+    "created_at": "2026-06-15",
+    "is_active": true
+  },
+  {
+    "id": "d2d6f5eee9fe",
+    "code": "INS-003",
+    "name": "游标卡尺",
+    "model": "0-300mm",
+    "manufacturer": "哈量",
+    "location": "机械车间",
+    "cycle_days": 90,
+    "last_calibration_date": "2026-03-27",
+    "owner": "operator1",
+    "remark": "精度0.02mm",
+    "created_at": "2026-06-15",
+    "is_active": true
+  },
+  {
+    "id": "059828ab09a8",
+    "code": "INS-004",
+    "name": "温度计",
+    "model": "PT100",
+    "manufacturer": "德国JUMO",
+    "location": "温控室",
+    "cycle_days": 365,
+    "last_calibration_date": null,
+    "owner": "operator2",
+    "remark": "全新设备待校准",
+    "created_at": "2026-06-15",
+    "is_active": true
+  },
+  {
+    "id": "fe6455ac8bdd",
+    "code": "INS-005",
+    "name": "压力变送器",
+    "model": "EJA110A",
+    "manufacturer": "横河川仪",
+    "location": "生产车间B",
+    "cycle_days": 365,
+    "last_calibration_date": "2026-05-16",
+    "owner": "operator1",
+    "remark": "近期已校准",
+    "created_at": "2026-06-15",
+    "is_active": true
+  }
+]

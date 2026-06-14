@@ -8,13 +8,13 @@ from ..models import (
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED,
     ROLE_OPERATOR, ROLE_REVIEWER,
-    _today_str, parse_date
+    _today_str, parse_date, TransitionLog
 )
 from ..storage import Storage, ValidationError, StorageError
 from ..service import CalibrationService
 from .dialogs import (
     InstrumentDialog, CalibrationSubmitDialog,
-    ReviewDialog, CancelDialog
+    ReviewDialog, CancelDialog, HistoryDialog
 )
 
 
@@ -137,9 +137,13 @@ class App(tk.Tk):
         toolbar = ttk.Frame(frm)
         toolbar.pack(fill="x", pady=(0, 6))
         ttk.Label(toolbar, text="此列表中的记录等待执行校准").pack(side="left")
-        ttk.Button(toolbar, text="录入校准结果", command=self.submit_calibration).pack(
+        ttk.Button(toolbar, text="查看历史", command=self.view_history).pack(
             side="right", padx=2)
-        ttk.Button(toolbar, text="撤销记录", command=self.cancel_record).pack(
+        ttk.Button(toolbar, text="撤销上一次流转", command=self.undo_last_transition).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="取消记录", command=self.cancel_record).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="录入校准结果", command=self.submit_calibration).pack(
             side="right", padx=2)
 
         cols = ("instrument_code", "instrument_name", "planned_date",
@@ -162,9 +166,13 @@ class App(tk.Tk):
         toolbar = ttk.Frame(frm)
         toolbar.pack(fill="x", pady=(0, 6))
         ttk.Label(toolbar, text="校准已完成，等待提交复核").pack(side="left")
-        ttk.Button(toolbar, text="提交复核", command=self.send_for_review).pack(
+        ttk.Button(toolbar, text="查看历史", command=self.view_history).pack(
             side="right", padx=2)
-        ttk.Button(toolbar, text="撤销记录", command=self.cancel_record).pack(
+        ttk.Button(toolbar, text="撤销上一次流转", command=self.undo_last_transition).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="取消记录", command=self.cancel_record).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="提交复核", command=self.send_for_review).pack(
             side="right", padx=2)
 
         cols = ("instrument_code", "instrument_name", "planned_date",
@@ -189,9 +197,13 @@ class App(tk.Tk):
         toolbar = ttk.Frame(frm)
         toolbar.pack(fill="x", pady=(0, 6))
         ttk.Label(toolbar, text="已提交，等待复核员归档").pack(side="left")
-        ttk.Button(toolbar, text="复核并归档", command=self.review_archive).pack(
+        ttk.Button(toolbar, text="查看历史", command=self.view_history).pack(
             side="right", padx=2)
-        ttk.Button(toolbar, text="撤销记录", command=self.cancel_record).pack(
+        ttk.Button(toolbar, text="撤销上一次流转", command=self.undo_last_transition).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="取消记录", command=self.cancel_record).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="复核并归档", command=self.review_archive).pack(
             side="right", padx=2)
 
         cols = ("instrument_code", "instrument_name", "actual_date",
@@ -236,7 +248,11 @@ class App(tk.Tk):
 
         toolbar = ttk.Frame(frm)
         toolbar.pack(fill="x", pady=(0, 6))
-        ttk.Label(frm, text="已撤销的校准记录（仅供查看）").pack(anchor="w")
+        ttk.Label(toolbar, text="已取消的校准记录（可撤销恢复）").pack(side="left")
+        ttk.Button(toolbar, text="查看历史", command=self.view_history).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="撤销上一次流转（恢复）", command=self.undo_last_transition).pack(
+            side="right", padx=2)
 
         cols = ("instrument_code", "instrument_name", "planned_date",
                 "status", "cancelled_by", "cancel_reason", "updated_at")
@@ -244,10 +260,10 @@ class App(tk.Tk):
             "instrument_code": ("仪器编号", 100),
             "instrument_name": ("仪器名称", 160),
             "planned_date": ("计划日期", 100),
-            "status": ("原状态", 80),
-            "cancelled_by": ("撤销人", 90),
-            "cancel_reason": ("撤销原因", 300),
-            "updated_at": ("撤销时间", 100),
+            "status": ("取消前状态", 80),
+            "cancelled_by": ("取消人", 90),
+            "cancel_reason": ("取消原因", 300),
+            "updated_at": ("取消时间", 100),
         })
 
     # ---- Tree helpers ----
@@ -466,16 +482,23 @@ class App(tk.Tk):
         except StorageError as e:
             messagebox.showerror("错误", str(e), parent=self)
 
-    def cancel_record(self):
+    def _get_current_tree(self):
         selected_tab = self.nb.index(self.nb.select())
-        tree = None
-        if selected_tab == 1:
-            tree = self.pending_tree
-        elif selected_tab == 2:
-            tree = self.completed_tree
-        elif selected_tab == 3:
-            tree = self.reviewing_tree
-        else:
+        trees = [
+            None,
+            self.pending_tree,
+            self.completed_tree,
+            self.reviewing_tree,
+            self.archived_tree,
+            self.cancelled_tree,
+        ]
+        if 1 <= selected_tab < len(trees):
+            return trees[selected_tab]
+        return None
+
+    def cancel_record(self):
+        tree = self._get_current_tree()
+        if tree is None:
             messagebox.showwarning("提示", "请在待执行/已完成/待复核标签页中选择记录", parent=self)
             return
         rid = self._selected_id(tree)
@@ -492,8 +515,65 @@ class App(tk.Tk):
         try:
             self.service.cancel_record(rec.id, self.current_user, **dlg.result)
             self.refresh_records()
-            self.set_status(f"记录已撤销，原因: {dlg.result['cancel_reason']}")
-            messagebox.showinfo("成功", "记录已撤销并移至取消记录列表", parent=self)
+            self.refresh_instruments()
+            self.set_status(f"记录已取消，原因: {dlg.result['cancel_reason']}")
+            messagebox.showinfo("成功",
+                "记录已取消，可在「取消记录」标签页查看并支持撤销恢复",
+                parent=self)
+        except ValidationError as e:
+            messagebox.showerror("校验失败", str(e), parent=self)
+            self.set_status(f"取消失败: {e}")
+        except StorageError as e:
+            messagebox.showerror("错误", str(e), parent=self)
+
+    def view_history(self):
+        tree = self._get_current_tree()
+        if tree is None:
+            messagebox.showwarning("提示", "请先选择一条记录", parent=self)
+            return
+        rid = self._selected_id(tree)
+        if not rid:
+            messagebox.showwarning("提示", "请先选择一条记录", parent=self)
+            return
+        rec = self.storage.get_record_by_id(rid)
+        if not rec:
+            return
+        history = self.service.list_history(rec.id)
+        dlg = HistoryDialog(self, rec, history)
+        self.wait_window(dlg)
+
+    def undo_last_transition(self):
+        tree = self._get_current_tree()
+        if tree is None:
+            messagebox.showwarning("提示", "请在记录标签页中选择一条记录", parent=self)
+            return
+        rid = self._selected_id(tree)
+        if not rid:
+            messagebox.showwarning("提示", "请先选择一条记录", parent=self)
+            return
+        rec = self.storage.get_record_by_id(rid)
+        if not rec:
+            return
+        last = self.service.get_undoable_transition(rid)
+        if not last:
+            messagebox.showinfo("提示", "该记录没有可撤销的流转操作", parent=self)
+            return
+        msg = (f"确定撤销上一次流转？\n\n"
+               f"操作: {last.action}\n"
+               f"原状态: {last.from_status}\n"
+               f"当前状态: {last.to_status}\n"
+               f"操作人: {last.by_user}\n"
+               f"时间: {last.created_at}")
+        if not messagebox.askyesno("确认撤销流转", msg, parent=self):
+            return
+        try:
+            rec = self.service.undo_last_transition(rid, self.current_user)
+            self.refresh_records()
+            self.refresh_instruments()
+            self.set_status(f"已撤销上一次流转，记录恢复为: {rec.status}")
+            messagebox.showinfo("成功",
+                f"已撤销上一次流转，记录恢复为「{rec.status}」状态",
+                parent=self)
         except ValidationError as e:
             messagebox.showerror("校验失败", str(e), parent=self)
             self.set_status(f"撤销失败: {e}")

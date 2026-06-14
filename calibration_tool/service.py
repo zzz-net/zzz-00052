@@ -4,11 +4,13 @@ from datetime import date, timedelta
 from typing import List, Optional, Tuple
 
 from .models import (
-    Instrument, CalibrationRecord, User,
+    Instrument, CalibrationRecord, User, TransitionLog,
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED,
     ROLE_OPERATOR, ROLE_REVIEWER,
-    parse_date, is_valid_date, add_days, _today_str
+    ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
+    ACTION_CANCEL, ACTION_UNDO, UNDOABLE_ACTIONS,
+    parse_date, is_valid_date, add_days, _today_str, _now_str
 )
 from .storage import Storage, ValidationError, StorageError
 
@@ -135,15 +137,36 @@ class CalibrationService:
         records.sort(key=lambda r: (r.status, r.planned_date), reverse=False)
         return records
 
-    def list_cancelled_records(self) -> List[CalibrationRecord]:
-        return self.storage.load_cancelled_records()
-
     # ---- State transitions ----
     def _check_permission(self, user: User, action: str):
         if action == "review" and user.role != ROLE_REVIEWER:
             raise ValidationError("当前用户无复核权限，请切换为复核员角色")
-        if action == "cancel_review" and user.role != ROLE_REVIEWER:
+        if action in ("cancel_review", "undo") and user.role != ROLE_REVIEWER:
             raise ValidationError("当前用户无撤销权限，请切换为复核员角色")
+
+    def _log_transition(self, record: CalibrationRecord, action: str,
+                        from_status: str, to_status: str, user: User,
+                        reason: str = "", instrument_snapshot: dict = None,
+                        record_snapshot: dict = None) -> TransitionLog:
+        log = TransitionLog(
+            record_id=record.id,
+            action=action,
+            from_status=from_status,
+            to_status=to_status,
+            by_user=user.username,
+            reason=reason,
+            record_snapshot=record_snapshot if record_snapshot is not None else record.snapshot(),
+            instrument_snapshot=instrument_snapshot or {},
+        )
+        return self.storage.add_history(log)
+
+    def list_history(self, record_id: str = None) -> List[TransitionLog]:
+        if record_id:
+            return self.storage.get_history_for_record(record_id)
+        return sorted(self.storage.load_history(), key=lambda h: h.created_at)
+
+    def list_cancelled_records(self) -> List[CalibrationRecord]:
+        return [r for r in self.storage.load_records() if r.status == STATUS_CANCELLED]
 
     def submit_calibration(self, record_id: str, user: User,
                            actual_date: str, result: str,
@@ -160,6 +183,12 @@ class CalibrationService:
             raise StorageError(f"校准记录不存在: {record_id}")
         if rec.status != STATUS_PENDING:
             raise ValidationError(f"只有'{STATUS_PENDING}'状态的记录才能录入校准结果")
+
+        from_status = rec.status
+        snap_rec = rec.snapshot()
+        inst = self.storage.get_instrument_by_id(rec.instrument_id)
+        snap_inst = inst.snapshot() if inst else {}
+
         actual = parse_date(actual_date)
         planned = parse_date(rec.planned_date)
         rec.actual_date = actual_date
@@ -172,12 +201,20 @@ class CalibrationService:
         rec.overdue_reason = overdue_reason.strip()
         rec.status = STATUS_COMPLETED
         rec.updated_at = _today_str()
-        self.storage.update_record(rec)
+        rec.instrument_last_calibration_before = snap_inst.get("last_calibration_date")
 
-        inst = self.storage.get_instrument_by_id(rec.instrument_id)
         if inst is not None:
             inst.last_calibration_date = actual_date
             self.storage.update_instrument(inst)
+
+        self._log_transition(
+            rec, ACTION_SUBMIT,
+            from_status=from_status, to_status=rec.status,
+            user=user, reason=rec.overdue_reason,
+            instrument_snapshot=snap_inst,
+            record_snapshot=snap_rec
+        )
+        self.storage.update_record(rec)
         return rec
 
     def send_for_review(self, record_id: str, user: User) -> CalibrationRecord:
@@ -186,8 +223,19 @@ class CalibrationService:
             raise StorageError(f"校准记录不存在: {record_id}")
         if rec.status != STATUS_COMPLETED:
             raise ValidationError(f"只有'{STATUS_COMPLETED}'状态的记录才能提交复核")
+
+        from_status = rec.status
+        snap_rec = rec.snapshot()
+
         rec.status = STATUS_REVIEWING
         rec.updated_at = _today_str()
+
+        self._log_transition(
+            rec, ACTION_SEND_REVIEW,
+            from_status=from_status, to_status=rec.status,
+            user=user,
+            record_snapshot=snap_rec
+        )
         self.storage.update_record(rec)
         return rec
 
@@ -202,6 +250,10 @@ class CalibrationService:
             raise StorageError(f"校准记录不存在: {record_id}")
         if rec.status != STATUS_REVIEWING:
             raise ValidationError(f"只有'{STATUS_REVIEWING}'状态的记录才能复核归档")
+
+        from_status = rec.status
+        snap_rec = rec.snapshot()
+
         rec.reviewer = user.username
         rec.review_comment = review_comment.strip()
         if certificate_summary.strip():
@@ -209,6 +261,13 @@ class CalibrationService:
         rec.status = STATUS_ARCHIVED
         rec.archived_at = _today_str()
         rec.updated_at = _today_str()
+
+        self._log_transition(
+            rec, ACTION_REVIEW_ARCHIVE,
+            from_status=from_status, to_status=rec.status,
+            user=user, reason=rec.review_comment,
+            record_snapshot=snap_rec
+        )
         self.storage.update_record(rec)
         return rec
 
@@ -221,22 +280,88 @@ class CalibrationService:
         if rec is None:
             raise StorageError(f"校准记录不存在: {record_id}")
         if rec.status == STATUS_ARCHIVED:
-            raise ValidationError(f"'{STATUS_ARCHIVED}'状态的记录无法撤销")
+            raise ValidationError(f"'{STATUS_ARCHIVED}'状态的记录无法取消")
         if rec.status == STATUS_CANCELLED:
             raise ValidationError(f"记录已处于取消状态")
+
+        from_status = rec.status
+        snap_rec = rec.snapshot()
+        inst = self.storage.get_instrument_by_id(rec.instrument_id)
+        snap_inst = inst.snapshot() if inst else {}
+
         rec.cancelled_by = user.username
         rec.cancel_reason = cancel_reason.strip()
         rec.status = STATUS_CANCELLED
         rec.updated_at = _today_str()
-        records = [r for r in self.storage.load_records() if r.id != rec.id]
-        self.storage.save_records(records)
-        self.storage.add_cancelled_record(rec)
+
+        self._log_transition(
+            rec, ACTION_CANCEL,
+            from_status=from_status, to_status=rec.status,
+            user=user, reason=rec.cancel_reason,
+            instrument_snapshot=snap_inst,
+            record_snapshot=snap_rec
+        )
+        self.storage.update_record(rec)
+        return rec
+
+    # ---- Undo last transition ----
+    def get_undoable_transition(self, record_id: str) -> Optional[TransitionLog]:
+        last = self.storage.get_last_undoable_transition(record_id)
+        return last
+
+    def undo_last_transition(self, record_id: str, user: User) -> CalibrationRecord:
+        self._check_permission(user, "undo")
+
+        last = self.storage.get_last_undoable_transition(record_id)
+        if last is None:
+            raise ValidationError("该记录无可撤销的流转操作")
+
+        rec = self.storage.get_record_by_id(record_id)
+        if rec is None:
+            raise StorageError(f"校准记录不存在: {record_id}")
+
+        if rec.status != last.to_status:
+            raise ValidationError("记录当前状态与最后一次流转不符，无法撤销")
+
+        snap_before = last.record_snapshot
+        if not snap_before:
+            raise ValidationError("历史快照缺失，无法撤销")
+
+        from_status = rec.status
+        to_status = snap_before.get("status", from_status)
+
+        rec.restore_from(snap_before)
+        rec.updated_at = _today_str()
+
+        inst = None
+        if last.instrument_snapshot:
+            inst = self.storage.get_instrument_by_id(rec.instrument_id)
+            if inst is not None and last.action == ACTION_SUBMIT:
+                inst.last_calibration_date = last.instrument_snapshot.get("last_calibration_date")
+                self.storage.update_instrument(inst)
+
+        self._log_transition(
+            rec, ACTION_UNDO,
+            from_status=from_status,
+            to_status=to_status,
+            user=user,
+            reason=f"撤销操作：{last.action}",
+            instrument_snapshot=last.instrument_snapshot,
+            record_snapshot=rec.snapshot()
+        )
+
+        last.is_undone = True
+        last.undone_by = user.username
+        last.undone_at = _now_str()
+        self.storage.update_history(last)
+
+        self.storage.update_record(rec)
         return rec
 
     # ---- Export ----
     def export_csv(self, filepath: str, records: Optional[List[CalibrationRecord]] = None) -> int:
         if records is None:
-            records = self.list_records()
+            records = self.storage.load_records()
         fieldnames = [
             "id", "instrument_code", "instrument_name", "planned_date",
             "status", "operator", "actual_date", "result", "is_overdue",
@@ -254,7 +379,7 @@ class CalibrationService:
 
     def export_html(self, filepath: str, records: Optional[List[CalibrationRecord]] = None) -> int:
         if records is None:
-            records = self.list_records()
+            records = self.storage.load_records()
         headers = ["编号", "仪器编号", "仪器名称", "计划日期", "状态",
                    "操作员", "实际日期", "结果", "超期", "超期原因",
                    "复核人", "复核意见", "证书摘要", "创建时间", "归档时间"]

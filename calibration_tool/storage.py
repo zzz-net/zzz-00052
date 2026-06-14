@@ -5,9 +5,12 @@ from datetime import date
 from typing import List, Optional, Dict
 
 from .models import (
-    Instrument, CalibrationRecord, User,
+    Instrument, CalibrationRecord, User, TransitionLog,
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
-    STATUS_ARCHIVED, STATUS_CANCELLED, parse_date, is_valid_date
+    STATUS_ARCHIVED, STATUS_CANCELLED,
+    ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
+    ACTION_CANCEL, ACTION_UNDO, UNDOABLE_ACTIONS,
+    parse_date, is_valid_date
 )
 
 
@@ -25,13 +28,14 @@ class Storage:
         self.instruments_file = os.path.join(data_dir, "instruments.json")
         self.records_file = os.path.join(data_dir, "records.json")
         self.users_file = os.path.join(data_dir, "users.json")
+        self.history_file = os.path.join(data_dir, "history.json")
         self.cancelled_records_file = os.path.join(data_dir, "cancelled_records.json")
         os.makedirs(data_dir, exist_ok=True)
         self._ensure_files()
 
     def _ensure_files(self):
         for f in [self.instruments_file, self.records_file,
-                  self.users_file, self.cancelled_records_file]:
+                  self.users_file, self.history_file, self.cancelled_records_file]:
             if not os.path.exists(f):
                 with open(f, "w", encoding="utf-8") as fp:
                     json.dump([], fp, ensure_ascii=False, indent=2)
@@ -139,3 +143,42 @@ class Storage:
         records = self.load_cancelled_records()
         records.append(record)
         self.save_cancelled_records(records)
+
+    # ---- Transition History ----
+    def load_history(self) -> List[TransitionLog]:
+        return [TransitionLog.from_dict(d) for d in self._read_json(self.history_file)]
+
+    def save_history(self, history: List[TransitionLog]):
+        self._write_json(self.history_file, [h.to_dict() for h in history])
+
+    def add_history(self, log: TransitionLog) -> TransitionLog:
+        history = self.load_history()
+        history.append(log)
+        self.save_history(history)
+        return log
+
+    def update_history(self, log: TransitionLog) -> TransitionLog:
+        history = self.load_history()
+        for i, existing in enumerate(history):
+            if existing.id == log.id:
+                history[i] = log
+                self.save_history(history)
+                return log
+        raise StorageError(f"历史记录不存在: {log.id}")
+
+    def get_history_for_record(self, record_id: str) -> List[TransitionLog]:
+        return sorted(
+            [h for h in self.load_history() if h.record_id == record_id],
+            key=lambda h: h.created_at
+        )
+
+    def get_last_undoable_transition(self, record_id: str) -> Optional[TransitionLog]:
+        rec = self.get_record_by_id(record_id)
+        if rec is None:
+            return None
+        logs = [h for h in self.load_history()
+                if h.record_id == record_id and not h.is_undone
+                and h.action in UNDOABLE_ACTIONS
+                and h.to_status == rec.status]
+        logs.sort(key=lambda h: h.created_at, reverse=True)
+        return logs[0] if logs else None

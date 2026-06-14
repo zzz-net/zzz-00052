@@ -2,311 +2,312 @@ import os
 import sys
 import shutil
 from datetime import date, timedelta
+import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from calibration_tool import (
-    Storage, CalibrationService, CalibrationRecord,
+    Storage, CalibrationService, CalibrationRecord, User, TransitionLog,
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED,
-    ROLE_OPERATOR, ROLE_REVIEWER, User,
-    ValidationError, StorageError, parse_date, _today_str
+    ROLE_OPERATOR, ROLE_REVIEWER,
+    ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
+    ACTION_CANCEL, ACTION_UNDO,
+    ValidationError, StorageError, _today_str, parse_date
 )
 
 
 def fresh_data_dir() -> str:
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "test_data_tmp")
+    base = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base, "test_data_tmp")
     if os.path.exists(path):
         shutil.rmtree(path)
+    os.makedirs(path)
     return path
 
 
-def assert_raises(fn, exc_type, msg_substr: str = ""):
-    try:
-        fn()
-    except exc_type as e:
-        if msg_substr and msg_substr not in str(e):
-            raise AssertionError(
-                f"期望错误包含 '{msg_substr}'，实际为: {e}")
-        return True
-    raise AssertionError(f"期望抛出 {exc_type.__name__}，但未抛出")
-
-
-def print_pass(name: str):
-    print(f"  [OK] {name}")
-
-
-def test_instrument_crud():
-    print("[测试] 仪器台账 CRUD")
-    data_dir = fresh_data_dir()
-    storage = Storage(data_dir)
-    svc = CalibrationService(storage)
-
-    inst1 = svc.create_instrument(
-        code="T-001", name="测试仪器", model="M1",
-        manufacturer="厂家A", location="房间1", cycle_days=90,
-        last_calibration_date=(date.today() - timedelta(days=100)).isoformat(),
-        owner="张三", remark="备注1"
-    )
-    assert inst1.code == "T-001"
-    print_pass("新增仪器")
-
-    insts = svc.list_instruments()
-    assert len(insts) == 1
-    print_pass("查询仪器列表")
-
-    svc.update_instrument(inst1.id, name="测试仪器-已更新", cycle_days=180)
-    inst1_u = storage.get_instrument_by_id(inst1.id)
-    assert inst1_u.name == "测试仪器-已更新"
-    assert inst1_u.cycle_days == 180
-    print_pass("更新仪器")
-
-    assert_raises(
-        lambda: svc.create_instrument(code="T-001", name="重复编号"),
-        ValidationError, "已存在")
-    print_pass("重复仪器编号被拒绝")
-
-    assert_raises(
-        lambda: svc.create_instrument(code="", name="空编号"),
-        ValidationError, "不能为空")
-    assert_raises(
-        lambda: svc.create_instrument(code="T-002", name=""),
-        ValidationError, "不能为空")
-    print_pass("空编号/空名称被拒绝")
-
-    assert_raises(
-        lambda: svc.create_instrument(code="T-002", name="坏日期",
-                                      last_calibration_date="2024-13-40"),
-        ValidationError, "格式无效")
-    assert_raises(
-        lambda: svc.create_instrument(code="T-002", name="坏周期", cycle_days=-5),
-        ValidationError, "正整数")
-    print_pass("非法日期/坏周期被拒绝")
-
-    shutil.rmtree(data_dir)
-    print("")
-
-
-def test_plan_generation_and_flow():
-    print("[测试] 计划生成与状态流转主流程")
-    data_dir = fresh_data_dir()
-    storage = Storage(data_dir)
-    svc = CalibrationService(storage)
-
-    storage.save_users([
+def make_users(storage: Storage):
+    users = [
         User(username="op1", role=ROLE_OPERATOR),
+        User(username="op2", role=ROLE_OPERATOR),
         User(username="rv1", role=ROLE_REVIEWER),
-    ])
-    op = storage.load_users()[0]
-    rv = storage.load_users()[1]
+    ]
+    storage.save_users(users)
+    return users[0], users[2]
 
+
+def make_test_instrument(svc: CalibrationService, code: str = "T-001",
+                          overdue: bool = False):
     today = date.today()
-    svc.create_instrument(
-        code="A-1", name="仪器A", cycle_days=365,
-        last_calibration_date=(today - timedelta(days=400)).isoformat())
-    svc.create_instrument(
-        code="A-2", name="仪器B", cycle_days=180,
-        last_calibration_date="")
-
-    plans = svc.generate_plans()
-    assert len(plans) == 2, f"应生成2条计划，实际{len(plans)}"
-    print_pass(f"生成 {len(plans)} 条校准计划")
-
-    plans2 = svc.generate_plans()
-    assert len(plans2) == 0, "重复生成不应产生新计划"
-    print_pass("重复生成计划时跳过已有未完成记录")
-
-    pending = svc.list_records(STATUS_PENDING)
-    assert len(pending) == 2
-    rec = pending[0]
-
-    rec = svc.submit_calibration(
-        rec.id, op,
-        actual_date=_today_str(),
-        result="合格",
-        certificate_summary="证书号:C2024-001;误差:±0.01%",
-        overdue_reason="设备送检延迟" if rec.is_overdue else ""
+    days_ago = 400 if overdue else 30
+    return svc.create_instrument(
+        code=code, name=f"测试仪器{code}",
+        cycle_days=365,
+        last_calibration_date=(today - timedelta(days=days_ago)).isoformat()
     )
-    assert rec.status == STATUS_COMPLETED
-    assert rec.actual_date == _today_str()
-    print_pass("录入校准结果，状态→已完成")
-
-    rec = svc.send_for_review(rec.id, op)
-    assert rec.status == STATUS_REVIEWING
-    print_pass("提交复核，状态→待复核")
-
-    rec = svc.review_archive(
-        rec.id, rv,
-        review_comment="校准过程合规，结果可信，同意归档",
-        certificate_summary="证书号:C2024-001;误差:±0.01%;签发人:李工"
-    )
-    assert rec.status == STATUS_ARCHIVED
-    assert rec.reviewer == "rv1"
-    assert rec.archived_at is not None
-    print_pass("复核归档，状态→归档")
-
-    archived = svc.list_records(STATUS_ARCHIVED)
-    assert len(archived) == 1
-    print_pass("归档记录可查询")
-
-    shutil.rmtree(data_dir)
-    print("")
 
 
-def test_failure_paths():
-    print("[测试] 失败路径（权限/空撤销/非法输入等）")
-    data_dir = fresh_data_dir()
-    storage = Storage(data_dir)
-    svc = CalibrationService(storage)
-    storage.save_users([
-        User(username="op1", role=ROLE_OPERATOR),
-        User(username="rv1", role=ROLE_REVIEWER),
-    ])
-    op = storage.load_users()[0]
-    rv = storage.load_users()[1]
+class TestTransitionHistory(unittest.TestCase):
+    def setUp(self):
+        self.data_dir = fresh_data_dir()
+        self.storage = Storage(self.data_dir)
+        self.svc = CalibrationService(self.storage)
+        self.op, self.rv = make_users(self.storage)
 
-    today = date.today()
-    svc.create_instrument(
-        code="F-1", name="失败路径仪器", cycle_days=365,
-        last_calibration_date=(today - timedelta(days=400)).isoformat())
-    svc.generate_plans()
-    rec = svc.list_records(STATUS_PENDING)[0]
+    def tearDown(self):
+        if os.path.exists(self.data_dir):
+            shutil.rmtree(self.data_dir)
 
-    assert_raises(
-        lambda: svc.submit_calibration(rec.id, op,
-            actual_date="", result="合格"),
-        ValidationError, "不能为空")
-    print_pass("空实际日期被拒绝")
+    def _make_plan(self, code: str = "T-001"):
+        make_test_instrument(self.svc, code)
+        plans = self.svc.generate_plans()
+        self.assertEqual(len(plans), 1)
+        return plans[0]
 
-    assert_raises(
-        lambda: svc.submit_calibration(rec.id, op,
-            actual_date="bad-date", result="合格"),
-        ValidationError, "格式无效")
-    print_pass("非法日期格式被拒绝")
+    def test_cancel_then_undo_pending(self):
+        rec = self._make_plan("T-001")
+        self.assertEqual(rec.status, STATUS_PENDING)
 
-    assert_raises(
-        lambda: svc.submit_calibration(rec.id, op,
-            actual_date=_today_str(), result=""),
-        ValidationError, "不能为空")
-    print_pass("空校准结果被拒绝")
+        # 1. 取消待执行记录（用复核员权限）
+        self.svc.cancel_record(rec.id, self.rv, cancel_reason="误操作测试")
+        rec = self.storage.get_record_by_id(rec.id)
+        self.assertEqual(rec.status, STATUS_CANCELLED)
+        self.assertEqual(rec.cancel_reason, "误操作测试")
 
-    svc.submit_calibration(
-        rec.id, op,
-        actual_date=_today_str(), result="合格",
-        overdue_reason="送检延迟")
-    rec = storage.get_record_by_id(rec.id)
+        all_recs = self.storage.load_records()
+        self.assertEqual(len(all_recs), 1, "取消后的记录应保留在主 records.json 中")
+        self.assertEqual(all_recs[0].status, STATUS_CANCELLED)
 
-    assert_raises(
-        lambda: svc.review_archive(rec.id, op, review_comment="越权操作"),
-        ValidationError, "无复核权限")
-    print_pass("普通操作员尝试复核被拒绝")
+        history = self.svc.list_history(rec.id)
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0].action, ACTION_CANCEL)
+        self.assertEqual(history[0].from_status, STATUS_PENDING)
+        self.assertEqual(history[0].to_status, STATUS_CANCELLED)
+        self.assertEqual(history[0].by_user, self.rv.username)
 
-    rec = svc.send_for_review(rec.id, op)
+        # 2. 撤销取消，恢复为待执行
+        rec2 = self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertEqual(rec2.status, STATUS_PENDING)
+        self.assertEqual(rec2.cancel_reason, "")
+        self.assertEqual(rec2.cancelled_by, "")
 
-    assert_raises(
-        lambda: svc.review_archive(rec.id, rv, review_comment=""),
-        ValidationError, "不能为空")
-    print_pass("空复核意见被拒绝")
+        history = self.svc.list_history(rec.id)
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[1].action, ACTION_UNDO)
+        self.assertTrue(history[0].is_undone)
 
-    assert_raises(
-        lambda: svc.cancel_record(rec.id, op, cancel_reason="越权撤销"),
-        ValidationError, "无撤销权限")
-    print_pass("普通操作员尝试撤销被拒绝")
+    def test_submit_calibration_then_undo(self):
+        rec = self._make_plan("T-002")
+        today = _today_str()
 
-    assert_raises(
-        lambda: svc.cancel_record(rec.id, rv, cancel_reason=""),
-        ValidationError, "不能为空")
-    print_pass("空撤销原因被拒绝")
+        rec = self.svc.submit_calibration(
+            rec.id, self.op,
+            actual_date=today,
+            result="合格",
+            certificate_summary="CERT-001"
+        )
+        self.assertEqual(rec.status, STATUS_COMPLETED)
+        self.assertEqual(rec.actual_date, today)
 
-    cancelled = svc.cancel_record(rec.id, rv, cancel_reason="设备报废，无需校准")
-    assert cancelled.status == STATUS_CANCELLED
-    assert len(svc.list_cancelled_records()) == 1
-    assert len([r for r in svc.list_records() if r.id == rec.id]) == 0
-    print_pass("撤销记录从主记录移至取消记录列表")
+        history = self.svc.list_history(rec.id)
+        self.assertEqual(history[0].action, ACTION_SUBMIT)
+        self.assertEqual(history[0].record_snapshot["status"], STATUS_PENDING)
 
-    active_records = svc.list_records()
-    cancelled_list = svc.list_cancelled_records()
-    assert len(active_records) == 0
-    assert len(cancelled_list) == 1
-    print_pass("撤销操作不破坏其他记录状态")
+        last = self.svc.get_undoable_transition(rec.id)
+        self.assertIsNotNone(last)
+        self.assertEqual(last.action, ACTION_SUBMIT)
 
-    shutil.rmtree(data_dir)
-    print("")
+        undo_rec = self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertEqual(undo_rec.status, STATUS_PENDING)
+        self.assertIsNone(undo_rec.actual_date)
+        self.assertEqual(undo_rec.result, "")
 
+    def test_send_for_review_then_undo(self):
+        rec = self._make_plan("T-003")
+        self.svc.submit_calibration(
+            rec.id, self.op, actual_date=_today_str(), result="合格")
 
-def test_persistence_and_export():
-    print("[测试] 数据持久化与导出")
-    data_dir = fresh_data_dir()
-    storage = Storage(data_dir)
-    svc = CalibrationService(storage)
-    storage.save_users([
-        User(username="op1", role=ROLE_OPERATOR),
-        User(username="rv1", role=ROLE_REVIEWER),
-    ])
-    op = storage.load_users()[0]
-    rv = storage.load_users()[1]
+        rec = self.svc.send_for_review(rec.id, self.op)
+        self.assertEqual(rec.status, STATUS_REVIEWING)
 
-    svc.create_instrument(code="P-1", name="持久化仪器", cycle_days=90,
-                          last_calibration_date=_today_str())
-    svc.generate_plans()
-    rec = svc.list_records(STATUS_PENDING)[0]
-    rec = svc.submit_calibration(rec.id, op,
-        actual_date=_today_str(), result="合格")
-    rec = svc.send_for_review(rec.id, op)
-    rec = svc.review_archive(rec.id, rv,
-        review_comment="数据完整，归档保存")
-    svc.cancel_record(svc.list_records(STATUS_PENDING)[0].id
-                      if svc.list_records(STATUS_PENDING) else rec.id,
-                      rv, cancel_reason="测试撤销") if False else None
+        undo_rec = self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertEqual(undo_rec.status, STATUS_COMPLETED)
 
-    del storage
-    del svc
+        history = self.svc.list_history(rec.id)
+        actions = [h.action for h in history]
+        self.assertIn(ACTION_UNDO, actions)
 
-    storage2 = Storage(data_dir)
-    svc2 = CalibrationService(storage2)
-    assert len(svc2.list_instruments()) == 1
-    assert svc2.list_instruments()[0].code == "P-1"
-    assert len(svc2.list_records(STATUS_ARCHIVED)) == 1
-    print_pass("关闭/重开后台数据一致（台账+记录）")
+    def test_cancel_after_completed_then_undo(self):
+        rec = self._make_plan("T-004")
+        self.svc.submit_calibration(
+            rec.id, self.op, actual_date=_today_str(), result="合格")
+        rec = self.svc.cancel_record(rec.id, self.rv, cancel_reason="无需校准")
+        self.assertEqual(rec.status, STATUS_CANCELLED)
 
-    csv_path = os.path.join(data_dir, "export.csv")
-    n = svc2.export_csv(csv_path)
-    assert n >= 1
-    assert os.path.exists(csv_path)
-    with open(csv_path, "r", encoding="utf-8-sig") as f:
-        content = f.read()
-        assert "P-1" in content
-    print_pass("CSV 导出可读且包含数据")
+        undo_rec = self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertEqual(undo_rec.status, STATUS_COMPLETED)
+        self.assertEqual(undo_rec.result, "合格")
 
-    html_path = os.path.join(data_dir, "export.html")
-    n = svc2.export_html(html_path)
-    assert n >= 1
-    assert os.path.exists(html_path)
-    with open(html_path, "r", encoding="utf-8") as f:
-        html = f.read()
-        assert "<html" in html.lower()
-        assert "P-1" in html
-    print_pass("HTML 导出格式正确且包含数据")
+    def test_archived_cannot_cancel_and_no_undo(self):
+        rec = self._make_plan("T-005")
+        self.svc.submit_calibration(
+            rec.id, self.op, actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(
+            rec.id, self.rv, review_comment="流程合规")
 
-    shutil.rmtree(data_dir)
-    print("")
+        rec = self.storage.get_record_by_id(rec.id)
+        self.assertEqual(rec.status, STATUS_ARCHIVED)
+
+        with self.assertRaises(ValidationError) as ctx:
+            self.svc.cancel_record(rec.id, self.rv, cancel_reason="x")
+        self.assertIn("归档", str(ctx.exception))
+
+        last = self.svc.get_undoable_transition(rec.id)
+        self.assertIsNone(last, "归档后不应有可撤销的流转（归档操作不可撤销）")
+
+    def test_operator_cannot_undo(self):
+        rec = self._make_plan("T-006")
+        self.svc.cancel_record(rec.id, self.rv, cancel_reason="test")
+
+        with self.assertRaises(ValidationError) as ctx:
+            self.svc.undo_last_transition(rec.id, self.op)
+        self.assertIn("无撤销权限", str(ctx.exception))
+
+    def test_empty_cancel_reason_rejected(self):
+        rec = self._make_plan("T-007")
+        with self.assertRaises(ValidationError) as ctx:
+            self.svc.cancel_record(rec.id, self.rv, cancel_reason="   ")
+        self.assertIn("不能为空", str(ctx.exception))
+
+    def test_operator_cannot_cancel(self):
+        rec = self._make_plan("T-008")
+        with self.assertRaises(ValidationError) as ctx:
+            self.svc.cancel_record(rec.id, self.op, cancel_reason="test")
+        self.assertIn("无撤销权限", str(ctx.exception))
+
+    def test_no_undoable_transition_rejected(self):
+        rec = self._make_plan("T-009")
+        with self.assertRaises(ValidationError) as ctx:
+            self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertIn("无可撤销的流转操作", str(ctx.exception))
+
+    def test_history_persistence_after_reload(self):
+        rec = self._make_plan("T-010")
+        self.svc.cancel_record(rec.id, self.rv, cancel_reason="测试持久化")
+        self.svc.undo_last_transition(rec.id, self.rv)
+
+        history_before = self.svc.list_history(rec.id)
+        self.assertEqual(len(history_before), 2)
+
+        del self.storage
+        del self.svc
+
+        storage2 = Storage(self.data_dir)
+        svc2 = CalibrationService(storage2)
+
+        history_after = svc2.list_history(rec.id)
+        self.assertEqual(len(history_after), 2)
+        self.assertEqual(history_after[0].action, ACTION_CANCEL)
+        self.assertTrue(history_after[0].is_undone)
+        self.assertEqual(history_after[1].action, ACTION_UNDO)
+
+        rec_reloaded = storage2.get_record_by_id(rec.id)
+        self.assertEqual(rec_reloaded.status, STATUS_PENDING)
+
+    def test_instrument_calibration_date_rollback_on_undo(self):
+        today = date.today()
+        last_cal = (today - timedelta(days=400)).isoformat()
+        new_cal = _today_str()
+
+        inst = self.svc.create_instrument(
+            code="T-011", name="回溯测试仪器",
+            cycle_days=365,
+            last_calibration_date=last_cal
+        )
+        self.svc.generate_plans()
+        rec = self.svc.list_records(STATUS_PENDING)[0]
+
+        rec = self.svc.submit_calibration(
+            rec.id, self.op, actual_date=new_cal, result="合格",
+            overdue_reason="送样延迟")
+
+        inst_after = self.storage.get_instrument_by_id(inst.id)
+        self.assertEqual(inst_after.last_calibration_date, new_cal)
+
+        self.svc.undo_last_transition(rec.id, self.rv)
+
+        inst_rolled = self.storage.get_instrument_by_id(inst.id)
+        self.assertEqual(inst_rolled.last_calibration_date, last_cal,
+                         "撤销录入校准后，仪器上次校准日期应回滚")
+
+    def test_export_includes_cancelled_records(self):
+        rec = self._make_plan("T-012")
+        self.svc.cancel_record(rec.id, self.rv, cancel_reason="导出测试")
+
+        csv_path = os.path.join(self.data_dir, "test_export.csv")
+        n = self.svc.export_csv(csv_path)
+        self.assertGreaterEqual(n, 1)
+
+        with open(csv_path, "r", encoding="utf-8-sig") as f:
+            content = f.read()
+        self.assertIn(STATUS_CANCELLED, content)
+        self.assertIn("导出测试", content)
+        self.assertIn(rec.instrument_code, content)
+
+    def test_undo_is_not_cancel(self):
+        rec = self._make_plan("T-013")
+        rec = self.svc.submit_calibration(
+            rec.id, self.op, actual_date=_today_str(), result="合格")
+
+        undo_rec = self.svc.undo_last_transition(rec.id, self.rv)
+
+        self.assertNotEqual(undo_rec.status, STATUS_CANCELLED,
+                            "撤销流转不等于取消记录")
+        self.assertEqual(undo_rec.cancel_reason, "",
+                         "撤销操作不应写入取消原因字段")
+
+        history = self.svc.list_history(rec.id)
+        self.assertIn(ACTION_UNDO, [h.action for h in history])
+        self.assertNotIn(ACTION_CANCEL, [h.action for h in history],
+                         "撤销流转没有产生取消动作的历史")
+
+    def test_cancelled_list_uses_main_records(self):
+        rec1 = self._make_plan("T-A")
+        rec2 = self._make_plan("T-B")
+
+        self.svc.cancel_record(rec1.id, self.rv, cancel_reason="取消A")
+
+        cancelled = self.svc.list_cancelled_records()
+        self.assertEqual(len(cancelled), 1)
+        self.assertEqual(cancelled[0].instrument_code, "T-A")
+        self.assertEqual(cancelled[0].cancel_reason, "取消A")
+
+        self.svc.undo_last_transition(rec1.id, self.rv)
+        cancelled = self.svc.list_cancelled_records()
+        self.assertEqual(len(cancelled), 0)
 
 
 def run_all():
-    print("=" * 60)
-    print("仪器校准排程系统 - 自动化测试")
-    print("=" * 60 + "\n")
+    print("=" * 65)
+    print(" 仪器校准排程系统 - 流转历史与撤销功能 自动化测试")
+    print("=" * 65 + "\n")
 
-    test_instrument_crud()
-    test_plan_generation_and_flow()
-    test_failure_paths()
-    test_persistence_and_export()
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromTestCase(TestTransitionHistory)
+    runner = unittest.TextTestRunner(verbosity=2, stream=sys.stdout)
+    result = runner.run(suite)
 
-    print("=" * 60)
-    print("全部测试通过 [OK]")
-    print("=" * 60)
+    print("\n" + "=" * 65)
+    if result.wasSuccessful():
+        print(f"全部 {result.testsRun} 个测试通过 [OK]")
+    else:
+        print(f"测试失败: {len(result.failures)} 失败, {len(result.errors)} 错误")
+    print("=" * 65)
+
+    return result.wasSuccessful()
 
 
 if __name__ == "__main__":
-    run_all()
+    success = run_all()
+    sys.exit(0 if success else 1)

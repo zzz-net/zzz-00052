@@ -20,6 +20,10 @@ def _today_str() -> str:
     return date.today().isoformat()
 
 
+def _now_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _new_id() -> str:
     return uuid.uuid4().hex[:12]
 
@@ -59,6 +63,14 @@ class Instrument:
     def from_dict(cls, d: dict) -> "Instrument":
         return cls(**d)
 
+    def snapshot(self) -> dict:
+        return asdict(self)
+
+    def restore_from(self, snapshot: dict):
+        for k, v in snapshot.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
+
 
 @dataclass
 class CalibrationRecord:
@@ -81,6 +93,7 @@ class CalibrationRecord:
     created_at: str = field(default_factory=_today_str)
     updated_at: str = field(default_factory=_today_str)
     archived_at: Optional[str] = None
+    instrument_last_calibration_before: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -88,6 +101,47 @@ class CalibrationRecord:
     @classmethod
     def from_dict(cls, d: dict) -> "CalibrationRecord":
         return cls(**d)
+
+    def snapshot(self) -> dict:
+        return asdict(self)
+
+    def restore_from(self, snapshot: dict):
+        for k, v in snapshot.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
+
+
+@dataclass
+class TransitionLog:
+    id: str = field(default_factory=_new_id)
+    record_id: str = ""
+    action: str = ""
+    from_status: str = ""
+    to_status: str = ""
+    by_user: str = ""
+    reason: str = ""
+    record_snapshot: dict = field(default_factory=dict)
+    instrument_snapshot: dict = field(default_factory=dict)
+    created_at: str = field(default_factory=_now_str)
+    is_undone: bool = False
+    undone_by: str = ""
+    undone_at: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TransitionLog":
+        return cls(**d)
+
+
+ACTION_SUBMIT = "录入校准"
+ACTION_SEND_REVIEW = "提交复核"
+ACTION_REVIEW_ARCHIVE = "复核归档"
+ACTION_CANCEL = "取消记录"
+ACTION_UNDO = "撤销流转"
+
+UNDOABLE_ACTIONS = [ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_CANCEL]
 
 
 def parse_date(s: str) -> Optional[date]:

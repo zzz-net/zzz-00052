@@ -1,0 +1,30 @@
+[
+  {
+    "id": "01812c79eca4",
+    "code": "TEST-001",
+    "name": "测试仪器",
+    "model": "型号X",
+    "manufacturer": "厂商Y",
+    "location": "实验室A",
+    "cycle_days": 365,
+    "last_calibration_date": "2026-06-15",
+    "owner": "张工",
+    "remark": "",
+    "created_at": "2026-06-15",
+    "is_active": true
+  },
+  {
+    "id": "ba5a84a17436",
+    "code": "TEST-002",
+    "name": "测试仪器2",
+    "model": "",
+    "manufacturer": "",
+    "location": "",
+    "cycle_days": 180,
+    "last_calibration_date": "2026-06-05",
+    "owner": "",
+    "remark": "",
+    "created_at": "2026-06-15",
+    "is_active": true
+  }
+]

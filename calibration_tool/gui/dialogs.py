@@ -1,9 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import date, timedelta
+from typing import List
 
 from ..models import (
-    Instrument, CalibrationRecord, User,
+    Instrument, CalibrationRecord, User, TransitionLog,
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED, ROLE_REVIEWER,
     parse_date, is_valid_date, _today_str
@@ -213,3 +214,57 @@ class CancelDialog(tk.Toplevel):
     def _ok(self):
         self.result = {"cancel_reason": _get_text_content(self.t_reason)}
         self.destroy()
+
+
+class HistoryDialog(tk.Toplevel):
+    def __init__(self, master, record: CalibrationRecord, history: List[TransitionLog]):
+        super().__init__(master)
+        self.record = record
+        self.history = history
+        self.title("状态流转历史")
+        self.geometry("900x500")
+        self.resizable(True, True)
+        self.transient(master)
+        self.grab_set()
+
+        frm = ttk.Frame(self, padding=10)
+        frm.pack(fill="both", expand=True)
+
+        header = ttk.Frame(frm)
+        header.pack(fill="x", pady=(0, 8))
+        ttk.Label(header, text=f"仪器编号: {record.instrument_code}",
+                  font=("", 11, "bold")).pack(side="left", padx=(0, 20))
+        ttk.Label(header, text=f"仪器名称: {record.instrument_name}").pack(side="left", padx=(0, 20))
+        ttk.Label(header, text=f"当前状态: {record.status}", foreground="#2980b9").pack(side="left")
+
+        cols = ("created_at", "action", "from_status", "to_status", "by_user", "reason", "is_undone")
+        tree = ttk.Treeview(frm, columns=cols, show="headings")
+        tree.heading("created_at", text="时间")
+        tree.heading("action", text="操作")
+        tree.heading("from_status", text="原状态")
+        tree.heading("to_status", text="新状态")
+        tree.heading("by_user", text="操作人")
+        tree.heading("reason", text="原因/说明")
+        tree.heading("is_undone", text="已撤销")
+        tree.column("created_at", width=120, anchor="w")
+        tree.column("action", width=100, anchor="w")
+        tree.column("from_status", width=80, anchor="w")
+        tree.column("to_status", width=80, anchor="w")
+        tree.column("by_user", width=80, anchor="w")
+        tree.column("reason", width=300, anchor="w")
+        tree.column("is_undone", width=60, anchor="center")
+
+        for log in reversed(history):
+            undone = "是" if log.is_undone else ""
+            tree.insert("", "end", values=(log.created_at, log.action,
+                        log.from_status, log.to_status, log.by_user,
+                        log.reason, undone))
+
+        vsb = ttk.Scrollbar(frm, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x", pady=10)
+        ttk.Button(btns, text="关闭", command=self.destroy).pack(side="right", padx=8)
