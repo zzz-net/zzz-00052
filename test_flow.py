@@ -148,7 +148,7 @@ class TestTransitionHistory(unittest.TestCase):
         self.assertEqual(undo_rec.status, STATUS_COMPLETED)
         self.assertEqual(undo_rec.result, "合格")
 
-    def test_archived_cannot_cancel_and_no_undo(self):
+    def test_archived_cannot_cancel(self):
         rec = self._make_plan("T-005")
         self.svc.submit_calibration(
             rec.id, self.op, actual_date=_today_str(), result="合格")
@@ -164,7 +164,43 @@ class TestTransitionHistory(unittest.TestCase):
         self.assertIn("归档", str(ctx.exception))
 
         last = self.svc.get_undoable_transition(rec.id)
-        self.assertIsNone(last, "归档后不应有可撤销的流转（归档操作不可撤销）")
+        self.assertIsNotNone(last, "归档后应有可撤销的流转（撤销归档）")
+        self.assertEqual(last.action, ACTION_REVIEW_ARCHIVE)
+
+    def test_archive_then_undo(self):
+        rec = self._make_plan("T-010")
+        self.svc.submit_calibration(
+            rec.id, self.op, actual_date=_today_str(), result="合格",
+            certificate_summary="CERT-001")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(
+            rec.id, self.rv, review_comment="结果合格，同意归档")
+
+        rec = self.storage.get_record_by_id(rec.id)
+        self.assertEqual(rec.status, STATUS_ARCHIVED)
+        self.assertIsNotNone(rec.archived_at)
+        self.assertEqual(rec.reviewer, self.rv.username)
+        self.assertEqual(rec.review_comment, "结果合格，同意归档")
+
+        undo_rec = self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertEqual(undo_rec.status, STATUS_REVIEWING)
+        self.assertIsNone(undo_rec.archived_at)
+        self.assertEqual(undo_rec.reviewer, "")
+        self.assertEqual(undo_rec.review_comment, "")
+        self.assertEqual(undo_rec.certificate_summary, "CERT-001")
+        self.assertEqual(undo_rec.result, "合格")
+
+        history = self.storage.get_history_for_record(rec.id)
+        self.assertEqual(len(history), 4)
+        self.assertEqual(history[0].action, ACTION_SUBMIT)
+        self.assertEqual(history[1].action, ACTION_SEND_REVIEW)
+        self.assertEqual(history[2].action, ACTION_REVIEW_ARCHIVE)
+        self.assertTrue(history[2].is_undone)
+        self.assertEqual(history[3].action, ACTION_UNDO)
+
+        last = self.svc.get_undoable_transition(rec.id)
+        self.assertIsNotNone(last, "撤销归档后，最近可撤销提交复核")
+        self.assertEqual(last.action, ACTION_SEND_REVIEW)
 
     def test_operator_cannot_undo(self):
         rec = self._make_plan("T-006")

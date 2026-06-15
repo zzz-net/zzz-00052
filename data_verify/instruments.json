@@ -1,6 +1,6 @@
 [
   {
-    "id": "01812c79eca4",
+    "id": "00c909636dff",
     "code": "TEST-001",
     "name": "测试仪器",
     "model": "型号X",
@@ -14,7 +14,7 @@
     "is_active": true
   },
   {
-    "id": "ba5a84a17436",
+    "id": "5a534ee9cfad",
     "code": "TEST-002",
     "name": "测试仪器2",
     "model": "",

@@ -178,7 +178,7 @@ def main():
         print(f"    [ERROR] {e}")
         return 1
 
-    section("5. 复核员 rv1：复核并归档（归档不可撤销）")
+    section("5. 复核员 rv1：复核并归档（归档后仍可撤销回到待复核）")
 
     try:
         rec = svc.review_archive(
@@ -192,17 +192,31 @@ def main():
         print(f"\n    [OK] 历史记录共 {len(history)} 条：")
         print_history(history)
 
-        sub_section("5.1 尝试撤销归档记录（验证不可撤销）")
+        sub_section("5.1 归档后可撤销（验证最近一次可撤销流转是归档")
         last = storage.get_last_undoable_transition(rec.id)
-        print(f"    [OK] 可撤销流转: {last}")
-        if last is None:
-            print(f"    [OK] 校验生效：归档记录无可撤销流转")
+        print(f"    [OK] 可撤销流转: {last.action if last else None}")
+        if last is not None:
+            print(f"    [OK] 最近一次可撤销动作: {last.action}")
+            print(f"    [OK] 原状态: {last.from_status} -> 新状态: {last.to_status}")
 
-        try:
-            rec = svc.undo_last_transition(rec.id, rv1)
-            print(f"    [ERROR] 应该报错不可撤销，但没有！")
-        except Exception as e:
-            print(f"    [OK] 校验生效：{e}")
+        sub_section("5.2 撤销归档（恢复到待复核）")
+        undo_rec = svc.undo_last_transition(rec.id, rv1)
+        print(f"    [OK] 撤销归档成功！状态已恢复为: {undo_rec.status}")
+        print_status(undo_rec)
+        print(f"    [OK] archived_at 已清空: {undo_rec.archived_at is None}")
+        print(f"    [OK] reviewer 已清空: {undo_rec.reviewer == ''}")
+        print(f"    [OK] review_comment 已清空: {undo_rec.review_comment == ''}")
+        print(f"    [OK] 校准结果保留: {undo_rec.result == '合格'}")
+        print(f"    [OK] 证书摘要保留: {'CERT-2024-001' in undo_rec.certificate_summary}")
+
+        history = storage.get_history_for_record(rec.id)
+        print(f"\n    [OK] 历史记录共 {len(history)} 条（新增撤销记录）：")
+        print_history(history)
+
+        sub_section("5.3 撤销归档后，可撤销流转为提交复核")
+        last2 = storage.get_last_undoable_transition(rec.id)
+        print(f"    [OK] 现在可撤销的是: {last2.action if last2 else None}")
+        print(f"    [OK] 只能撤销最近一次，不会翻出更早记录")
 
     except Exception as e:
         print(f"    [ERROR] {e}")

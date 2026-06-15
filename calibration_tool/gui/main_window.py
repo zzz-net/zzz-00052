@@ -225,7 +225,11 @@ class App(tk.Tk):
 
         toolbar = ttk.Frame(frm)
         toolbar.pack(fill="x", pady=(0, 6))
-        ttk.Label(toolbar, text="已完成全部流程的历史记录").pack(side="left")
+        ttk.Label(toolbar, text="已完成全部流程的历史记录（可撤销回到待复核）").pack(side="left")
+        ttk.Button(toolbar, text="查看历史", command=self.view_history).pack(
+            side="right", padx=2)
+        ttk.Button(toolbar, text="撤销上一次流转", command=self.undo_last_transition).pack(
+            side="right", padx=2)
 
         cols = ("instrument_code", "instrument_name", "actual_date",
                 "result", "operator", "reviewer", "review_comment",
