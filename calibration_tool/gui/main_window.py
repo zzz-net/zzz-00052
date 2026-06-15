@@ -8,7 +8,8 @@ from ..models import (
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED,
     ROLE_OPERATOR, ROLE_REVIEWER,
-    _today_str, parse_date, TransitionLog
+    _today_str, parse_date, TransitionLog,
+    get_status_info
 )
 from ..storage import Storage, ValidationError, StorageError
 from ..service import CalibrationService
@@ -36,7 +37,10 @@ class App(tk.Tk):
         self._build_style()
         self._build_top_bar()
         self._build_notebook()
+        self._build_summary_panel()
         self._build_status_bar()
+
+        self._bind_tree_events()
 
         self.refresh_all()
 
@@ -98,6 +102,168 @@ class App(tk.Tk):
         bar.pack(fill="x", side="bottom")
         ttk.Label(bar, textvariable=self.status_var, style="Status.TLabel").pack(
             side="left", padx=10)
+
+    # ---- Transition Summary Panel ----
+    def _build_summary_panel(self):
+        outer = ttk.LabelFrame(self, text=" 操作摘要 / 流转说明 (选中记录后查看详情) ", padding=(8, 6))
+        outer.pack(fill="x", padx=10, pady=(0, 5))
+
+        self.summary_container = ttk.Frame(outer)
+        self.summary_container.pack(fill="x")
+
+        left = ttk.Frame(self.summary_container)
+        left.pack(side="left", fill="both", expand=True)
+
+        row1 = ttk.Frame(left)
+        row1.pack(fill="x", pady=2)
+        ttk.Label(row1, text="当前状态:", font=("", 10, "bold")).pack(side="left")
+        self.summary_status_lbl = ttk.Label(row1, text="(未选中记录)", foreground="#7f8c8d")
+        self.summary_status_lbl.pack(side="left", padx=6)
+
+        row2 = ttk.Frame(left)
+        row2.pack(fill="x", pady=2)
+        ttk.Label(row2, text="状态说明:", font=("", 9)).pack(side="left", anchor="n")
+        self.summary_desc_lbl = ttk.Label(row2, text="请在上方列表中选择一条校准记录，查看当前状态的含义、下一步可执行操作、最近一次流转能否撤销等信息。",
+                                           wraplength=700, justify="left", foreground="#34495e")
+        self.summary_desc_lbl.pack(side="left", padx=6, fill="x", expand=True)
+
+        row3 = ttk.Frame(left)
+        row3.pack(fill="x", pady=2)
+        ttk.Label(row3, text="为什么在这:", font=("", 9)).pack(side="left", anchor="n")
+        self.summary_why_lbl = ttk.Label(row3, text="—", wraplength=700, justify="left", foreground="#5d6d7e")
+        self.summary_why_lbl.pack(side="left", padx=6, fill="x", expand=True)
+
+        right = ttk.Frame(self.summary_container)
+        right.pack(side="right", fill="both", expand=True)
+
+        row_r1 = ttk.Frame(right)
+        row_r1.pack(fill="x", pady=2)
+        ttk.Label(row_r1, text="历史/撤销:", font=("", 9, "bold")).pack(side="left")
+        self.summary_history_lbl = ttk.Label(row_r1, text="共 0 条流转记录，0 条已撤销", foreground="#5d6d7e")
+        self.summary_history_lbl.pack(side="left", padx=6)
+
+        row_r2 = ttk.Frame(right)
+        row_r2.pack(fill="x", pady=2)
+        ttk.Label(row_r2, text="撤销信息:", font=("", 9)).pack(side="left", anchor="n")
+        self.summary_undo_lbl = ttk.Label(row_r2, text="无可撤销的流转操作", wraplength=500, justify="left", foreground="#7f8c8d")
+        self.summary_undo_lbl.pack(side="left", padx=6, fill="x", expand=True)
+
+        actions_frame = ttk.LabelFrame(self, text=" 下一步可执行操作 ", padding=(8, 4))
+        actions_frame.pack(fill="x", padx=10, pady=(0, 5))
+        self.summary_actions_lbl = ttk.Label(actions_frame, text="(选中记录后显示当前角色可执行的操作及说明)",
+                                              wraplength=1100, justify="left", foreground="#2c3e50")
+        self.summary_actions_lbl.pack(fill="x", padx=2, pady=2)
+
+    def _bind_tree_events(self):
+        for tree in [self.pending_tree, self.completed_tree, self.reviewing_tree,
+                     self.archived_tree, self.cancelled_tree]:
+            tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
+
+    def _on_tab_change(self, _ev=None):
+        tree = self._get_current_tree()
+        if tree is not None:
+            rid = self._selected_id(tree)
+            if rid:
+                self._refresh_summary(rid)
+            else:
+                self._clear_summary()
+        else:
+            self._clear_summary()
+
+    def _on_tree_select(self, _ev=None):
+        tree = self._get_current_tree()
+        if tree is None:
+            self._clear_summary()
+            return
+        rid = self._selected_id(tree)
+        if rid:
+            self._refresh_summary(rid)
+        else:
+            self._clear_summary()
+
+    def _clear_summary(self):
+        self.summary_status_lbl.configure(text="(未选中记录)", foreground="#7f8c8d")
+        self.summary_desc_lbl.configure(text="请在上方列表中选择一条校准记录，查看当前状态的含义、下一步可执行操作、最近一次流转能否撤销等信息。")
+        self.summary_why_lbl.configure(text="—")
+        self.summary_history_lbl.configure(text="共 0 条流转记录，0 条已撤销")
+        self.summary_undo_lbl.configure(text="无可撤销的流转操作", foreground="#7f8c8d")
+        self.summary_actions_lbl.configure(text="(选中记录后显示当前角色可执行的操作及说明)")
+
+    def _refresh_summary(self, record_id: str):
+        try:
+            summary = self.service.get_transition_summary(record_id, self.current_user)
+        except (StorageError, ValidationError) as e:
+            self._clear_summary()
+            self.summary_desc_lbl.configure(text=f"获取摘要失败: {e}", foreground="#c0392b")
+            return
+
+        status_info = summary["current_status_info"]
+        status_color = status_info.get("color", "#2c3e50")
+        self.summary_status_lbl.configure(
+            text=f"【{summary['current_status']}】",
+            foreground=status_color,
+            font=("", 11, "bold")
+        )
+        self.summary_desc_lbl.configure(text=status_info.get("description", ""))
+        self.summary_why_lbl.configure(text=summary["why_here"])
+        self.summary_history_lbl.configure(
+            text=f"共 {summary['history_count']} 条流转记录，{summary['undo_count']} 条已撤销",
+            foreground="#5d6d7e"
+        )
+
+        undo_info = summary["undo_info"]
+        if undo_info:
+            undo_parts = [
+                f"最近一次操作:「{undo_info['action']}」",
+                f"操作人: {undo_info['by_user']}",
+                f"时间: {undo_info['created_at']}",
+                f"撤销后返回:「{undo_info['undo_returns_to_status']}」",
+                f"({undo_info['undo_returns_to_description']})",
+            ]
+            if undo_info["reason"]:
+                undo_parts.append(f"原操作原因: {undo_info['reason']}")
+            if undo_info["can_undo"]:
+                undo_parts.append("✅ 当前角色【复核员】可执行撤销")
+                undo_color = "#27ae60"
+            elif undo_info["undo_role_missing"]:
+                undo_parts.append(f"⚠️ 需【{undo_info['required_role']}】权限，当前角色【{summary['user_role']}】无法撤销")
+                undo_color = "#e67e22"
+            else:
+                undo_parts.append(f"⚠️ 需【{undo_info['required_role']}】权限")
+                undo_color = "#e67e22"
+            self.summary_undo_lbl.configure(text=" | ".join(undo_parts), foreground=undo_color)
+        else:
+            self.summary_undo_lbl.configure(text="无可撤销的流转操作（此状态为初始状态或已撤销到最早状态）", foreground="#7f8c8d")
+
+        actions = summary["available_actions"]
+        if not actions:
+            actions_text = "⏹ 当前状态无直接可执行的流转操作。可通过「撤销流转」回退到上一步（如有）。"
+        else:
+            action_lines = []
+            for a in actions:
+                role_note = ""
+                if a["role_missing"]:
+                    role_note = f" ⚠️需【{a['required_role']}】权限"
+                    action_color = "#e67e22"
+                elif a["required_role"]:
+                    role_note = f" 🔒需【{a['required_role']}】权限"
+                    action_color = "#27ae60"
+                else:
+                    role_note = " 🔓所有角色可操作"
+                    action_color = "#2980b9"
+                line = (
+                    f"• 【{a['button_label']}】{role_note}\n"
+                    f"   说明: {a['description']}\n"
+                    f"   执行后状态: 「{a['to_status']}」— {a['to_status_description']}"
+                )
+                if a["fields_required"]:
+                    line += f"\n   必填: {', '.join(a['fields_required'])}"
+                if a["fields_optional"]:
+                    line += f"\n   选填: {', '.join(a['fields_optional'])}"
+                action_lines.append(line)
+            actions_text = "\n\n".join(action_lines)
+        self.summary_actions_lbl.configure(text=actions_text)
 
     # ---- Instruments tab ----
     def _build_instruments_tab(self):
@@ -308,15 +474,6 @@ class App(tk.Tk):
         self.user_var.set(self.current_user.username)
         self.role_var.set(f"[角色: {self.current_user.role}]")
 
-    def _on_user_change(self, _ev=None):
-        username = self.user_var.get()
-        try:
-            self.current_user = self.service.set_current_user(username)
-            self.role_var.set(f"[角色: {self.current_user.role}]")
-            self.set_status(f"已切换为用户: {username} ({self.current_user.role})")
-        except ValidationError as e:
-            messagebox.showerror("错误", str(e), parent=self)
-
     # ---- Status ----
     def set_status(self, msg: str):
         self.status_var.set(msg)
@@ -417,11 +574,23 @@ class App(tk.Tk):
                         ("instrument_code", "instrument_name", "planned_date",
                          "status", "cancelled_by", "cancel_reason", "updated_at"))
 
+        self._on_tab_change()
+
     def refresh_all(self):
         self._refresh_user_combobox()
         self.refresh_instruments()
         self.refresh_records()
         self.set_status("数据已刷新")
+
+    def _on_user_change(self, _ev=None):
+        username = self.user_var.get()
+        try:
+            self.current_user = self.service.set_current_user(username)
+            self.role_var.set(f"[角色: {self.current_user.role}]")
+            self.set_status(f"已切换为用户: {username} ({self.current_user.role})")
+            self._on_tab_change()
+        except ValidationError as e:
+            messagebox.showerror("错误", str(e), parent=self)
 
     # ---- State transitions ----
     def submit_calibration(self):
@@ -543,7 +712,11 @@ class App(tk.Tk):
         if not rec:
             return
         history = self.service.list_history(rec.id)
-        dlg = HistoryDialog(self, rec, history)
+        try:
+            summary = self.service.get_transition_summary(rec.id, self.current_user)
+        except (StorageError, ValidationError):
+            summary = None
+        dlg = HistoryDialog(self, rec, history, summary)
         self.wait_window(dlg)
 
     def undo_last_transition(self):

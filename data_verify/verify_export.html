@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>校准记录导出</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; margin: 20px; }
+h1 { color: #2c3e50; }
+.audit-info { background-color: #f8f9fa; border-left: 4px solid #3498db; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+.audit-info h3 { margin: 0 0 8px 0; color: #2c3e50; font-size: 14px; }
+.audit-info p { margin: 4px 0; font-size: 13px; color: #34495e; }
+table { border-collapse: collapse; width: 100%; margin-top: 20px; table-layout: fixed; }
+th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; vertical-align: top; word-wrap: break-word; font-size: 12px; }
+th { background-color: #3498db; color: white; white-space: nowrap; }
+tr:nth-child(even) { background-color: #f9f9f9; }
+.status-待执行 td:nth-child(5) { color: #e67e22; font-weight: bold; }
+.status-已完成 td:nth-child(5) { color: #27ae60; font-weight: bold; }
+.status-待复核 td:nth-child(5) { color: #2980b9; font-weight: bold; }
+.status-归档 td:nth-child(5) { color: #7f8c8d; font-weight: bold; }
+.status-取消 td:nth-child(5) { color: #c0392b; font-weight: bold; }
+.summary-section { background-color: #eef7ff; border: 1px solid #b3d9ff; border-radius: 6px; padding: 16px; margin: 20px 0; }
+.summary-section h2 { margin-top: 0; color: #2c3e50; font-size: 16px; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+.stat-cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+.stat-card { background: white; border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); flex: 1; min-width: 140px; }
+.stat-card .label { font-size: 12px; color: #7f8c8d; margin-bottom: 4px; }
+.stat-card .value { font-size: 22px; font-weight: bold; color: #2c3e50; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+</style></head>
+<body>
+<h1>仪器校准记录导出</h1>
+<p>导出时间: 2026-06-15 | 共 4 条记录</p>
+
+<div class="audit-info">
+  <h3>📋 审计链路说明</h3>
+  <p><strong>数据来源：</strong>本导出文件与系统界面使用同一套流转规则定义（STATUS_RULES / ACTION_RULES），界面提示、规则校验、历史记录、导出内容共用唯一真相来源。</p>
+  <p><strong>字段说明：</strong>「状态说明」解释当前状态含义；「为什么在这」说明到达此状态的最近一次操作和原因；「最近可撤销操作」+「撤销返回状态」用于审计可追溯的回退路径。</p>
+  <p><strong>一致性保证：</strong>重启后重新打开系统，摘要、历史条数、可执行动作均从存储层加载，与导出时保持一致。</p>
+</div>
+
+<div class="summary-section">
+  <h2>📊 流转统计总览</h2>
+  <div class="stat-cards">
+    <div class="stat-card">
+      <div class="label">总记录数</div>
+      <div class="value">4</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="label">待执行</div>
+      <div class="value" style="color:#e67e22;">2</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">已完成</div>
+      <div class="value" style="color:#27ae60;">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">待复核</div>
+      <div class="value" style="color:#2980b9;">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">已归档</div>
+      <div class="value" style="color:#7f8c8d;">1</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">已取消</div>
+      <div class="value" style="color:#c0392b;">1</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">流转日志总条数</div>
+      <div class="value" style="color:#8e44ad;">12</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">当前可撤销记录数</div>
+      <div class="value" style="color:#16a085;">2</div>
+    </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#e67e22;"></span>待执行 - 等待操作员校准</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#27ae60;"></span>已完成 - 等待提交复核</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#2980b9;"></span>待复核 - 等待复核员归档</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#7f8c8d;"></span>归档 - 流程全部完成</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#c0392b;"></span>取消 - 已取消可恢复</div>
+  </div>
+</div>
+
+<table>
+<thead><tr><th>编号</th><th>仪器编号</th><th>仪器名称</th><th>计划日期</th><th>状态</th><th>状态说明</th><th>为什么在这</th><th>操作员</th><th>实际日期</th><th>结果</th><th>超期</th><th>超期原因</th><th>复核人</th><th>复核意见</th><th>证书摘要</th><th>流转次数</th><th>可撤销次数</th><th>最近可撤销操作</th><th>撤销返回状态</th><th>创建时间</th><th>归档时间</th></tr></thead>
+<tbody><tr class="status-归档"><td>cfc132b6273f</td><td>MANUAL-001</td><td>手动验证仪器A</td><td>2027-05-16</td><td>归档</td><td>复核员已确认并归档，校准流程全部完成。</td><td>通过「复核归档」操作于 2026-06-15 13:30:25 到达此状态，操作人: rv1_manual，原因: 5.1复核导出一致性测试</td><td>op1_manual</td><td>2026-06-15</td><td>合格</td><td>否</td><td></td><td>rv1_manual</td><td>5.1复核导出一致性测试</td><td>EXPORT-CERT-5.1</td><td>9</td><td>3</td><td>复核归档</td><td>待复核</td><td>2026-06-15</td><td>2026-06-15</td></tr><tr class="status-取消"><td>a1c784006177</td><td>MANUAL-002</td><td>取消vs撤销 对比仪器</td><td>2027-05-31</td><td>取消</td><td>该校准计划被取消，不再执行。可通过撤销恢复。</td><td>通过「取消记录」操作于 2026-06-15 13:30:25 到达此状态，操作人: rv1_manual，原因: 此仪器送检中，3.1取消</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>1</td><td>0</td><td>取消记录</td><td>待执行</td><td>2026-06-15</td><td></td></tr><tr class="status-待执行"><td>1c7eaa9f1406</td><td>MANUAL-002</td><td>取消vs撤销 对比仪器</td><td>2027-05-31</td><td>待执行</td><td>校准计划已生成，等待操作员执行实际校准工作。</td><td>通过「生成校准计划」功能创建，尚未执行任何流转操作</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>0</td><td>0</td><td></td><td></td><td>2026-06-15</td><td></td></tr><tr class="status-待执行"><td>abf3c8ef5654</td><td>MANUAL-003</td><td>仅撤销不取消 仪器</td><td>2027-06-05</td><td>待执行</td><td>校准计划已生成，等待操作员执行实际校准工作。</td><td>通过「撤销流转」操作从「已完成」恢复到此状态</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>2</td><td>1</td><td></td><td></td><td>2026-06-15</td><td></td></tr></tbody>
+</table>
+</body></html>

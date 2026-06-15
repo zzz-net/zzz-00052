@@ -13,7 +13,8 @@ from calibration_tool import (
     ROLE_OPERATOR, ROLE_REVIEWER,
     ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
     ACTION_CANCEL, ACTION_UNDO,
-    ValidationError, StorageError, _today_str, parse_date
+    ValidationError, StorageError, _today_str, parse_date,
+    STATUS_RULES, ACTION_RULES, get_available_actions, get_status_info, get_action_info
 )
 
 
@@ -324,22 +325,309 @@ class TestTransitionHistory(unittest.TestCase):
         self.assertEqual(len(cancelled), 0)
 
 
+class TestTransitionSummary(unittest.TestCase):
+    def setUp(self):
+        self.data_dir = fresh_data_dir()
+        self.storage = Storage(self.data_dir)
+        self.svc = CalibrationService(self.storage)
+        self.op, self.rv = make_users(self.storage)
+
+    def tearDown(self):
+        if os.path.exists(self.data_dir):
+            shutil.rmtree(self.data_dir)
+
+    def _make_plan(self, code: str = "T-S001"):
+        make_test_instrument(self.svc, code)
+        plans = self.svc.generate_plans()
+        matching = [p for p in plans if p.instrument_code == code]
+        self.assertGreaterEqual(len(matching), 1, f"没有找到仪器 {code} 的计划")
+        return matching[0]
+
+    def test_status_rules_defined_for_all_statuses(self):
+        for s in [STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
+                  STATUS_ARCHIVED, STATUS_CANCELLED]:
+            self.assertIn(s, STATUS_RULES, f"STATUS_RULES 中缺少 {s} 的定义")
+            info = get_status_info(s)
+            self.assertTrue(info.get("description"), f"{s} 缺少 description")
+            self.assertTrue(info.get("how_got_here"), f"{s} 缺少 how_got_here")
+            self.assertTrue(info.get("color"), f"{s} 缺少 color")
+
+    def test_action_rules_defined_for_all_actions(self):
+        for a in [ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
+                  ACTION_CANCEL, ACTION_UNDO]:
+            self.assertIn(a, ACTION_RULES, f"ACTION_RULES 中缺少 {a} 的定义")
+            info = get_action_info(a)
+            self.assertTrue(info.get("description"), f"{a} 缺少 description")
+            self.assertTrue(info.get("from_statuses"), f"{a} 缺少 from_statuses")
+
+    def test_get_available_actions_pending(self):
+        actions_op = get_available_actions(STATUS_PENDING, ROLE_OPERATOR)
+        action_keys = [a["action"] for a in actions_op]
+        self.assertIn(ACTION_SUBMIT, action_keys, "待执行状态下操作员应可录入校准")
+        self.assertIn(ACTION_CANCEL, action_keys, "待执行状态下列表应包含取消记录（带权限提示）")
+        cancel_info = [a for a in actions_op if a["action"] == ACTION_CANCEL][0]
+        self.assertFalse(cancel_info["can_do"], "操作员不应有取消权限")
+        self.assertTrue(cancel_info["role_missing"], "取消记录应标记为角色缺失")
+
+        actions_rv = get_available_actions(STATUS_PENDING, ROLE_REVIEWER)
+        cancel_rv = [a for a in actions_rv if a["action"] == ACTION_CANCEL][0]
+        self.assertTrue(cancel_rv["can_do"], "复核员应有取消权限")
+        self.assertFalse(cancel_rv["role_missing"])
+
+    def test_get_available_actions_archived(self):
+        actions = get_available_actions(STATUS_ARCHIVED, ROLE_REVIEWER)
+        self.assertEqual(len(actions), 0, "归档状态下无直接可执行的流转操作")
+
+    def test_get_available_actions_reviewing(self):
+        actions_op = get_available_actions(STATUS_REVIEWING, ROLE_OPERATOR)
+        review_action = [a for a in actions_op if a["action"] == ACTION_REVIEW_ARCHIVE]
+        self.assertTrue(review_action, "待复核状态下列表应包含复核归档（带权限提示）")
+        self.assertFalse(review_action[0]["can_do"], "操作员不应有复核权限")
+        self.assertEqual(review_action[0]["to_status"], STATUS_ARCHIVED)
+
+        actions_rv = get_available_actions(STATUS_REVIEWING, ROLE_REVIEWER)
+        review_rv = [a for a in actions_rv if a["action"] == ACTION_REVIEW_ARCHIVE][0]
+        self.assertTrue(review_rv["can_do"], "复核员应有复核归档权限")
+
+    def test_transition_summary_pending_initial(self):
+        rec = self._make_plan("T-S002")
+        summary = self.svc.get_transition_summary(rec.id, self.op)
+        self.assertEqual(summary["current_status"], STATUS_PENDING)
+        self.assertEqual(summary["history_count"], 0)
+        self.assertEqual(summary["undo_count"], 0)
+        self.assertIsNone(summary["undo_info"])
+        self.assertIn("生成校准计划", summary["why_here"])
+        action_keys = [a["action"] for a in summary["available_actions"]]
+        self.assertIn(ACTION_SUBMIT, action_keys)
+
+    def test_transition_summary_after_submit(self):
+        rec = self._make_plan("T-S003")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        summary_op = self.svc.get_transition_summary(rec.id, self.op)
+        self.assertEqual(summary_op["current_status"], STATUS_COMPLETED)
+        self.assertEqual(summary_op["history_count"], 1)
+        self.assertIsNotNone(summary_op["undo_info"], "录入校准后应有可撤销操作")
+        self.assertEqual(summary_op["undo_info"]["action"], ACTION_SUBMIT)
+        self.assertEqual(summary_op["undo_info"]["undo_returns_to_status"], STATUS_PENDING)
+        self.assertFalse(summary_op["undo_info"]["can_do"], "操作员不应能撤销")
+        self.assertTrue(summary_op["undo_info"]["undo_role_missing"])
+        action_keys = [a["action"] for a in summary_op["available_actions"]]
+        self.assertIn(ACTION_SEND_REVIEW, action_keys)
+
+        summary_rv = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertTrue(summary_rv["undo_info"]["can_do"], "复核员应能撤销")
+        self.assertFalse(summary_rv["undo_info"]["undo_role_missing"])
+
+    def test_transition_summary_after_archive(self):
+        rec = self._make_plan("T-S004")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(rec.id, self.rv, review_comment="流程合规")
+
+        summary = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertEqual(summary["current_status"], STATUS_ARCHIVED)
+        self.assertEqual(summary["history_count"], 3)
+        self.assertEqual(summary["undo_count"], 0)
+        self.assertIsNotNone(summary["undo_info"])
+        self.assertEqual(summary["undo_info"]["action"], ACTION_REVIEW_ARCHIVE)
+        self.assertEqual(summary["undo_info"]["undo_returns_to_status"], STATUS_REVIEWING)
+        self.assertEqual(len(summary["available_actions"]), 0,
+                         "归档状态下无直接流转动作，只能撤销")
+
+    def test_transition_summary_after_cancel(self):
+        rec = self._make_plan("T-S005")
+        self.svc.cancel_record(rec.id, self.rv, cancel_reason="无需校准")
+
+        summary = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertEqual(summary["current_status"], STATUS_CANCELLED)
+        self.assertIsNotNone(summary["undo_info"])
+        self.assertEqual(summary["undo_info"]["action"], ACTION_CANCEL)
+        self.assertEqual(summary["undo_info"]["undo_returns_to_status"], STATUS_PENDING,
+                         "撤销取消记录应回到待执行状态")
+        self.assertIn("无需校准", summary["undo_info"]["reason"])
+
+    def test_cancel_vs_undo_distinction_in_summary(self):
+        rec1 = self._make_plan("T-S006")
+        self.svc.submit_calibration(rec1.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.cancel_record(rec1.id, self.rv, cancel_reason="取消这条")
+        summary_cancel = self.svc.get_transition_summary(rec1.id, self.rv)
+        self.assertEqual(summary_cancel["current_status"], STATUS_CANCELLED)
+        self.assertIn(STATUS_CANCELLED, summary_cancel["why_here"])
+        self.assertIn("取消记录", summary_cancel["undo_info"]["action"])
+
+        rec2 = self._make_plan("T-S007")
+        self.svc.submit_calibration(rec2.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.undo_last_transition(rec2.id, self.rv)
+        summary_undo = self.svc.get_transition_summary(rec2.id, self.rv)
+        self.assertEqual(summary_undo["current_status"], STATUS_PENDING)
+        self.assertEqual(summary_undo["history_count"], 2,
+                         "撤销操作也应记录为一条历史（共2条：录入+撤销）")
+        self.assertIn("撤销流转", summary_undo["why_here"])
+        self.assertNotEqual(summary_undo["current_status"], STATUS_CANCELLED,
+                            "撤销流转不应让记录进入取消状态")
+
+    def test_summary_persistence_after_reload(self):
+        rec = self._make_plan("T-S008")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+
+        summary_before = self.svc.get_transition_summary(rec.id, self.rv)
+
+        del self.storage
+        del self.svc
+
+        storage2 = Storage(self.data_dir)
+        svc2 = CalibrationService(storage2)
+        rv2 = [u for u in storage2.load_users() if u.role == ROLE_REVIEWER][0]
+
+        summary_after = svc2.get_transition_summary(rec.id, rv2)
+
+        self.assertEqual(summary_before["current_status"], summary_after["current_status"])
+        self.assertEqual(summary_before["history_count"], summary_after["history_count"])
+        self.assertEqual(summary_before["undo_count"], summary_after["undo_count"])
+        self.assertEqual(summary_before["undo_info"]["action"],
+                         summary_after["undo_info"]["action"])
+        self.assertEqual(summary_before["undo_info"]["undo_returns_to_status"],
+                         summary_after["undo_info"]["undo_returns_to_status"])
+        actions_before = [a["action"] for a in summary_before["available_actions"]]
+        actions_after = [a["action"] for a in summary_after["available_actions"]]
+        self.assertListEqual(actions_before, actions_after,
+                             "重启后可用动作应保持一致")
+
+    def test_export_csv_matches_summary(self):
+        rec = self._make_plan("T-S009")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格",
+                                    certificate_summary="CERT-EXPORT-001")
+        self.svc.send_for_review(rec.id, self.op)
+
+        summary = self.svc.get_transition_summary(rec.id, self.rv)
+
+        csv_path = os.path.join(self.data_dir, "summary_export_test.csv")
+        self.svc.export_csv(csv_path)
+
+        with open(csv_path, "r", encoding="utf-8-sig") as f:
+            content = f.read()
+
+        self.assertIn(rec.instrument_code, content)
+        self.assertIn(summary["current_status_info"]["description"], content,
+                      "CSV导出应包含状态说明，与界面摘要共用同一来源")
+        self.assertIn(summary["why_here"], content,
+                      "CSV导出应包含为什么在这的说明")
+        self.assertIn(str(summary["history_count"]), content)
+        self.assertIn(summary["undo_info"]["action"], content,
+                      "CSV导出应包含最近可撤销操作")
+        self.assertIn(summary["undo_info"]["undo_returns_to_status"], content,
+                      "CSV导出应包含撤销返回状态")
+
+    def test_export_html_matches_summary(self):
+        rec = self._make_plan("T-S010")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(rec.id, self.rv, review_comment="测试导出一致性")
+
+        summary = self.svc.get_transition_summary(rec.id, self.rv)
+
+        html_path = os.path.join(self.data_dir, "summary_export_test.html")
+        self.svc.export_html(html_path)
+
+        with open(html_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn(rec.instrument_code, content)
+        self.assertIn(summary["current_status_info"]["description"], content,
+                      "HTML导出应包含状态说明，与界面摘要共用同一来源")
+        self.assertIn(summary["why_here"], content,
+                      "HTML导出应包含为什么在这的说明")
+        self.assertIn(str(summary["history_count"]), content)
+        self.assertIn("审计链路说明", content,
+                      "HTML导出应包含审计链路说明章节")
+        self.assertIn("流转统计总览", content,
+                      "HTML导出应包含统计总览")
+        self.assertIn("归档", content, "HTML导出应包含统计卡片")
+
+    def test_operator_reviewer_permission_diff_in_summary(self):
+        rec = self._make_plan("T-S011")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+
+        s_op = self.svc.get_transition_summary(rec.id, self.op)
+        s_rv = self.svc.get_transition_summary(rec.id, self.rv)
+
+        review_action_op = [a for a in s_op["available_actions"]
+                            if a["action"] == ACTION_REVIEW_ARCHIVE][0]
+        self.assertFalse(review_action_op["can_do"], "操作员不能复核归档")
+        self.assertTrue(review_action_op["role_missing"])
+
+        review_action_rv = [a for a in s_rv["available_actions"]
+                            if a["action"] == ACTION_REVIEW_ARCHIVE][0]
+        self.assertTrue(review_action_rv["can_do"], "复核员可以复核归档")
+        self.assertFalse(review_action_rv["role_missing"])
+
+        self.assertFalse(s_op["undo_info"]["can_do"], "操作员不能撤销")
+        self.assertTrue(s_op["undo_info"]["undo_role_missing"])
+        self.assertTrue(s_rv["undo_info"]["can_do"], "复核员可以撤销")
+
+    def test_archive_then_undo_summary_consistency(self):
+        rec = self._make_plan("T-S012")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(rec.id, self.rv, review_comment="准备撤销归档")
+
+        s_before = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertEqual(s_before["current_status"], STATUS_ARCHIVED)
+        self.assertEqual(s_before["undo_info"]["action"], ACTION_REVIEW_ARCHIVE)
+        self.assertEqual(s_before["undo_info"]["undo_returns_to_status"], STATUS_REVIEWING)
+
+        self.svc.undo_last_transition(rec.id, self.rv)
+
+        s_after = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertEqual(s_after["current_status"], STATUS_REVIEWING,
+                         "撤销归档后应回到待复核状态")
+        self.assertEqual(s_after["undo_count"], 1,
+                         "撤销后undo_count应加1")
+        self.assertEqual(s_after["history_count"], 4,
+                         "撤销归档后共4条历史：录入→提交→归档→撤销归档")
+        self.assertIsNotNone(s_after["undo_info"],
+                             "撤销归档后仍然可以继续撤销提交复核")
+        self.assertEqual(s_after["undo_info"]["action"], ACTION_SEND_REVIEW)
+        self.assertEqual(s_after["undo_info"]["undo_returns_to_status"], STATUS_COMPLETED)
+
+
 def run_all():
-    print("=" * 65)
-    print(" 仪器校准排程系统 - 流转历史与撤销功能 自动化测试")
-    print("=" * 65 + "\n")
+    print("=" * 70)
+    print(" 仪器校准排程系统 - 流转历史/撤销/摘要/权限/导出 自动化测试")
+    print("=" * 70 + "\n")
 
     loader = unittest.TestLoader()
-    suite = loader.loadTestsFromTestCase(TestTransitionHistory)
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromTestCase(TestTransitionHistory))
+    suite.addTests(loader.loadTestsFromTestCase(TestTransitionSummary))
     runner = unittest.TextTestRunner(verbosity=2, stream=sys.stdout)
     result = runner.run(suite)
 
-    print("\n" + "=" * 65)
+    print("\n" + "=" * 70)
     if result.wasSuccessful():
         print(f"全部 {result.testsRun} 个测试通过 [OK]")
     else:
         print(f"测试失败: {len(result.failures)} 失败, {len(result.errors)} 错误")
-    print("=" * 65)
+        if result.failures:
+            print("\n失败详情:")
+            for test, trace in result.failures:
+                print(f"  - {test}: {trace[:200]}...")
+        if result.errors:
+            print("\n错误详情:")
+            for test, trace in result.errors:
+                print(f"  - {test}: {trace[:200]}...")
+    print("=" * 70)
 
     return result.wasSuccessful()
 

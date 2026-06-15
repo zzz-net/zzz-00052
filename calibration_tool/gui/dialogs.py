@@ -7,8 +7,9 @@ from ..models import (
     Instrument, CalibrationRecord, User, TransitionLog,
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED, ROLE_REVIEWER,
-    parse_date, is_valid_date, _today_str
+    parse_date, is_valid_date, _today_str, get_status_info
 )
+from typing import Dict, Any
 
 
 def _grid_label_entry(parent, label: str, row: int, value: str = "",
@@ -217,12 +218,14 @@ class CancelDialog(tk.Toplevel):
 
 
 class HistoryDialog(tk.Toplevel):
-    def __init__(self, master, record: CalibrationRecord, history: List[TransitionLog]):
+    def __init__(self, master, record: CalibrationRecord, history: List[TransitionLog],
+                 summary: Dict[str, Any] = None):
         super().__init__(master)
         self.record = record
         self.history = history
-        self.title("状态流转历史")
-        self.geometry("900x500")
+        self.summary = summary
+        self.title("状态流转历史与操作摘要")
+        self.geometry("960x640")
         self.resizable(True, True)
         self.transient(master)
         self.grab_set()
@@ -235,7 +238,19 @@ class HistoryDialog(tk.Toplevel):
         ttk.Label(header, text=f"仪器编号: {record.instrument_code}",
                   font=("", 11, "bold")).pack(side="left", padx=(0, 20))
         ttk.Label(header, text=f"仪器名称: {record.instrument_name}").pack(side="left", padx=(0, 20))
-        ttk.Label(header, text=f"当前状态: {record.status}", foreground="#2980b9").pack(side="left")
+        status_info = get_status_info(record.status)
+        status_color = status_info.get("color", "#2c3e50")
+        ttk.Label(header, text=f"当前状态: {record.status}",
+                  foreground=status_color, font=("", 10, "bold")).pack(side="left")
+
+        if self.summary:
+            self._build_summary_panel(frm)
+
+        sep = ttk.Separator(frm, orient="horizontal")
+        sep.pack(fill="x", pady=6)
+
+        ttk.Label(frm, text="📜 状态流转历史日志（最新的在最下面）:",
+                  font=("", 10, "bold")).pack(anchor="w", pady=(2, 4))
 
         cols = ("created_at", "action", "from_status", "to_status", "by_user", "reason", "is_undone")
         tree = ttk.Treeview(frm, columns=cols, show="headings")
@@ -246,25 +261,118 @@ class HistoryDialog(tk.Toplevel):
         tree.heading("by_user", text="操作人")
         tree.heading("reason", text="原因/说明")
         tree.heading("is_undone", text="已撤销")
-        tree.column("created_at", width=120, anchor="w")
-        tree.column("action", width=100, anchor="w")
-        tree.column("from_status", width=80, anchor="w")
-        tree.column("to_status", width=80, anchor="w")
-        tree.column("by_user", width=80, anchor="w")
-        tree.column("reason", width=300, anchor="w")
-        tree.column("is_undone", width=60, anchor="center")
+        tree.column("created_at", width=150, anchor="w")
+        tree.column("action", width=110, anchor="w")
+        tree.column("from_status", width=90, anchor="w")
+        tree.column("to_status", width=90, anchor="w")
+        tree.column("by_user", width=90, anchor="w")
+        tree.column("reason", width=340, anchor="w")
+        tree.column("is_undone", width=70, anchor="center")
 
-        for log in reversed(history):
-            undone = "是" if log.is_undone else ""
+        for log in history:
+            undone = "✅是" if log.is_undone else ""
+            tag = "undone" if log.is_undone else "normal"
             tree.insert("", "end", values=(log.created_at, log.action,
                         log.from_status, log.to_status, log.by_user,
-                        log.reason, undone))
+                        log.reason, undone), tags=(tag,))
+        tree.tag_configure("undone", foreground="#95a5a6", background="#f4f6f7")
 
         vsb = ttk.Scrollbar(frm, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
-        tree.pack(side="left", fill="both", expand=True)
-        vsb.pack(side="right", fill="y")
+
+        tree_frame = ttk.Frame(frm)
+        tree_frame.pack(fill="both", expand=True)
+        tree.pack(side="left", fill="both", expand=True, in_=tree_frame)
+        vsb.pack(side="right", fill="y", in_=tree_frame)
 
         btns = ttk.Frame(frm)
         btns.pack(fill="x", pady=10)
         ttk.Button(btns, text="关闭", command=self.destroy).pack(side="right", padx=8)
+
+    def _build_summary_panel(self, parent):
+        s = self.summary
+        status_info = s.get("current_status_info", {})
+        status_color = status_info.get("color", "#2c3e50")
+
+        outer = ttk.LabelFrame(parent, text=" 📋 操作摘要 / 流转说明 ", padding=(10, 6))
+        outer.pack(fill="x", pady=(0, 4))
+
+        grid = ttk.Frame(outer)
+        grid.pack(fill="x")
+
+        ttk.Label(grid, text="当前状态:", font=("", 9, "bold")).grid(
+            row=0, column=0, sticky="e", padx=4, pady=2)
+        ttk.Label(grid, text=f"【{s['current_status']}】",
+                  foreground=status_color, font=("", 10, "bold")).grid(
+            row=0, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(grid, text="状态说明:", font=("", 9)).grid(
+            row=1, column=0, sticky="ne", padx=4, pady=2)
+        ttk.Label(grid, text=status_info.get("description", ""),
+                  wraplength=780, justify="left", foreground="#34495e").grid(
+            row=1, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(grid, text="为什么在这:", font=("", 9)).grid(
+            row=2, column=0, sticky="ne", padx=4, pady=2)
+        ttk.Label(grid, text=s.get("why_here", ""),
+                  wraplength=780, justify="left", foreground="#5d6d7e").grid(
+            row=2, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(grid, text="流转统计:", font=("", 9)).grid(
+            row=3, column=0, sticky="e", padx=4, pady=2)
+        ttk.Label(grid, text=f"共 {s.get('history_count', 0)} 条流转记录，"
+                             f"{s.get('undo_count', 0)} 条已撤销",
+                  foreground="#5d6d7e").grid(
+            row=3, column=1, sticky="w", padx=4, pady=2)
+
+        undo_info = s.get("undo_info")
+        ttk.Label(grid, text="撤销信息:", font=("", 9)).grid(
+            row=4, column=0, sticky="ne", padx=4, pady=2)
+        if undo_info:
+            undo_text = (
+                f"最近可撤销操作:「{undo_info['action']}」"
+                f" (操作人: {undo_info['by_user']}, 时间: {undo_info['created_at']})\n"
+                f"撤销后将返回:「{undo_info['undo_returns_to_status']}」"
+                f" — {undo_info['undo_returns_to_description']}"
+            )
+            if undo_info.get("reason"):
+                undo_text += f"\n原操作原因: {undo_info['reason']}"
+            if undo_info.get("can_undo"):
+                undo_text += "\n✅ 当前【复核员】角色可执行撤销"
+                undo_color = "#27ae60"
+            elif undo_info.get("undo_role_missing"):
+                undo_text += f"\n⚠️ 需要【{undo_info['required_role']}】权限，当前角色【{s.get('user_role', '?')}】无法撤销"
+                undo_color = "#e67e22"
+            else:
+                undo_color = "#7f8c8d"
+        else:
+            undo_text = "无可撤销的流转操作（此状态为初始状态或已撤销到最早状态）"
+            undo_color = "#7f8c8d"
+        ttk.Label(grid, text=undo_text, wraplength=780,
+                  justify="left", foreground=undo_color).grid(
+            row=4, column=1, sticky="w", padx=4, pady=2)
+
+        actions = s.get("available_actions", [])
+        ttk.Label(grid, text="下一步操作:", font=("", 9)).grid(
+            row=5, column=0, sticky="ne", padx=4, pady=2)
+        if not actions:
+            actions_text = "⏹ 当前状态无直接可执行的流转操作。可通过「撤销流转」回退到上一步（如有）。"
+        else:
+            action_parts = []
+            for a in actions:
+                if a.get("role_missing"):
+                    role_tag = f"⚠️需【{a['required_role']}】权限"
+                elif a.get("required_role"):
+                    role_tag = f"🔒需【{a['required_role']}】权限"
+                else:
+                    role_tag = "🔓所有角色可操作"
+                part = (
+                    f"• 【{a['button_label']}】{role_tag}\n"
+                    f"   说明: {a['description']}\n"
+                    f"   执行后状态:「{a['to_status']}」— {a['to_status_description']}"
+                )
+                action_parts.append(part)
+            actions_text = "\n\n".join(action_parts)
+        ttk.Label(grid, text=actions_text, wraplength=780,
+                  justify="left", foreground="#2c3e50").grid(
+            row=5, column=1, sticky="w", padx=4, pady=2)

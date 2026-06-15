@@ -1,10 +1,10 @@
 [
   {
-    "username": "op1",
+    "username": "op1_manual",
     "role": "操作员"
   },
   {
-    "username": "rv1",
+    "username": "rv1_manual",
     "role": "复核员"
   }
 ]
