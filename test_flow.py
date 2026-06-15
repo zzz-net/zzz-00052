@@ -220,7 +220,7 @@ class TestTransitionHistory(unittest.TestCase):
         rec = self._make_plan("T-008")
         with self.assertRaises(ValidationError) as ctx:
             self.svc.cancel_record(rec.id, self.op, cancel_reason="test")
-        self.assertIn("无撤销权限", str(ctx.exception))
+        self.assertIn("无取消权限", str(ctx.exception))
 
     def test_no_undoable_transition_rejected(self):
         rec = self._make_plan("T-009")

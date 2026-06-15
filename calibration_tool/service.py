@@ -141,7 +141,9 @@ class CalibrationService:
     def _check_permission(self, user: User, action: str):
         if action == "review" and user.role != ROLE_REVIEWER:
             raise ValidationError("当前用户无复核权限，请切换为复核员角色")
-        if action in ("cancel_review", "undo") and user.role != ROLE_REVIEWER:
+        if action == "cancel_review" and user.role != ROLE_REVIEWER:
+            raise ValidationError("当前用户无取消权限，请切换为复核员角色")
+        if action == "undo" and user.role != ROLE_REVIEWER:
             raise ValidationError("当前用户无撤销权限，请切换为复核员角色")
 
     def _log_transition(self, record: CalibrationRecord, action: str,
@@ -275,7 +277,7 @@ class CalibrationService:
                       cancel_reason: str = "") -> CalibrationRecord:
         self._check_permission(user, "cancel_review")
         if not cancel_reason.strip():
-            raise ValidationError("撤销原因不能为空")
+            raise ValidationError("取消原因不能为空")
         rec = self.storage.get_record_by_id(record_id)
         if rec is None:
             raise StorageError(f"校准记录不存在: {record_id}")

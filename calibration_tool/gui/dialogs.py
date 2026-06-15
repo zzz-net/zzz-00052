@@ -192,7 +192,7 @@ class CancelDialog(tk.Toplevel):
         super().__init__(master)
         self.record = record
         self.result = None
-        self.title("撤销校准记录")
+        self.title("取消校准记录")
         self.resizable(False, False)
         self.transient(master)
         self.grab_set()
@@ -200,15 +200,15 @@ class CancelDialog(tk.Toplevel):
         frm = ttk.Frame(self, padding=15)
         frm.pack(fill="both", expand=True)
 
-        msg = (f"确定撤销记录？\n\n仪器编号: {record.instrument_code}\n"
+        msg = (f"确定取消记录？\n\n仪器编号: {record.instrument_code}\n"
                f"仪器名称: {record.instrument_name}\n状态: {record.status}")
         ttk.Label(frm, text=msg, justify="left").grid(row=0, column=0, columnspan=2,
                                                       padx=5, pady=8, sticky="w")
-        self.t_reason = _grid_label_text(frm, "撤销原因 *", 1, "", height=3)
+        self.t_reason = _grid_label_text(frm, "取消原因 *", 1, "", height=3)
 
         btns = ttk.Frame(frm)
         btns.grid(row=2, column=0, columnspan=2, pady=10)
-        ttk.Button(btns, text="确认撤销", command=self._ok).pack(side="left", padx=8)
+        ttk.Button(btns, text="确认取消", command=self._ok).pack(side="left", padx=8)
         ttk.Button(btns, text="取消", command=self.destroy).pack(side="left", padx=8)
 
     def _ok(self):

@@ -15,7 +15,7 @@
 - **撤销上一次流转**：复核员可撤销最近一次流转（录入/提交复核/归档/取消），恢复原状态和所有字段
   - 撤销 ≠ 取消：撤销是回滚操作，不会写入取消原因
   - 所有流转均可撤销（除了撤销操作本身）
-- **字段完整**：责任人、校准结果、超期原因、复核意见、证书摘要、撤销原因
+- **字段完整**：责任人、校准结果、超期原因、复核意见、证书摘要、取消原因
 - **角色权限**：操作员可录入/提交，只有复核员可执行归档、取消、撤销
 - **数据持久化**：JSON 文件存储，关闭重开后台账、历史、撤销记录保持一致
 - **导出功能**：CSV 和 HTML 两种格式，包含所有状态（含取消状态）
@@ -150,7 +150,8 @@ python -m unittest test_flow.TestTransitionHistory -v
 | `test_submit_calibration_then_undo` | 录入校准 → 撤销 → 字段完全回滚 |
 | `test_send_for_review_then_undo` | 提交复核 → 撤销 → 回到已完成 |
 | `test_cancel_after_completed_then_undo` | 完成后取消 → 撤销 → 恢复完成状态 |
-| `test_archived_cannot_cancel_and_no_undo` | 归档记录不可取消、不可撤销 |
+| `test_archived_cannot_cancel` | 归档记录不可取消，但归档本身可撤销 |
+| `test_archive_then_undo` | 归档后撤销 → 回到待复核，字段完全恢复 |
 | `test_operator_cannot_undo` | 操作员越权撤销被拒 |
 | `test_empty_cancel_reason_rejected` | 空取消原因被拒 |
 | `test_operator_cannot_cancel` | 操作员越权取消被拒 |
