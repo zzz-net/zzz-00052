@@ -14,7 +14,8 @@ from calibration_tool import (
     ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
     ACTION_CANCEL, ACTION_UNDO,
     ValidationError, StorageError, _today_str, parse_date,
-    STATUS_RULES, ACTION_RULES, get_available_actions, get_status_info, get_action_info
+    STATUS_RULES, ACTION_RULES, get_available_actions, get_status_info, get_action_info,
+    close_logger
 )
 
 
@@ -56,8 +57,9 @@ class TestTransitionHistory(unittest.TestCase):
         self.op, self.rv = make_users(self.storage)
 
     def tearDown(self):
+        close_logger()
         if os.path.exists(self.data_dir):
-            shutil.rmtree(self.data_dir)
+            shutil.rmtree(self.data_dir, ignore_errors=True)
 
     def _make_plan(self, code: str = "T-001"):
         make_test_instrument(self.svc, code)
@@ -333,8 +335,9 @@ class TestTransitionSummary(unittest.TestCase):
         self.op, self.rv = make_users(self.storage)
 
     def tearDown(self):
+        close_logger()
         if os.path.exists(self.data_dir):
-            shutil.rmtree(self.data_dir)
+            shutil.rmtree(self.data_dir, ignore_errors=True)
 
     def _make_plan(self, code: str = "T-S001"):
         make_test_instrument(self.svc, code)

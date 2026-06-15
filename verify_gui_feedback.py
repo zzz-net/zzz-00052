@@ -53,7 +53,7 @@ def print_history(history):
 def print_summary(summary, title="流转摘要"):
     status_info = summary.get("current_status_info", {})
     print(f"\n    ┌─────────────────────────────────────────────────────────────────┐")
-    print(f"    │  📋 {title:<61} │")
+    print(f"    │  [清单] {title:<60} │")
     print(f"    ├─────────────────────────────────────────────────────────────────┤")
     print(f"    │  当前状态: 【{summary['current_status']}】{' '*(58 - len(summary['current_status']) * 2)}│")
     print(f"    │  状态说明: {status_info.get('description', '')[:62]:<62} │")
@@ -64,8 +64,8 @@ def print_summary(summary, title="流转摘要"):
 
     undo_info = summary.get("undo_info")
     if undo_info:
-        can_tag = "✅可撤销" if undo_info.get("can_do") else "⚠️需复核员权限"
-        print(f"    │  🔄 撤销信息: {can_tag}{' '*(59 - len(can_tag) * 2)}│")
+        can_tag = "[OK]可撤销" if undo_info.get("can_do") else "[!!]需复核员权限"
+        print(f"    │  [撤销] 撤销信息: {can_tag}{' '*(59 - len(can_tag) * 2)}│")
         print(f"    │    最近操作: {undo_info['action']}{' '*(60 - len(undo_info['action']) * 2)}│")
         print(f"    │    操作人/时间: {undo_info['by_user']} @ {undo_info['created_at'][:19]}{' '*(38 - len(undo_info['by_user']))}│")
         print(f"    │    撤销后返回: 【{undo_info['undo_returns_to_status']}】{' '*(56 - len(undo_info['undo_returns_to_status'])*2)}│")
@@ -73,22 +73,22 @@ def print_summary(summary, title="流转摘要"):
         if undo_info.get("reason"):
             print(f"    │    原操作原因: {undo_info['reason'][:60]:<60} │")
     else:
-        print(f"    │  🔄 撤销信息: 无可撤销的流转操作（初始状态或已撤销到最早）{' '*(18)}│")
+        print(f"    │  [撤销] 撤销信息: 无可撤销的流转操作（初始状态或已撤销到最早）{' '*(18)}│")
 
     print(f"    ├─────────────────────────────────────────────────────────────────┤")
     actions = summary.get("available_actions", [])
     if not actions:
-        print(f"    │  ⏩ 下一步操作: 无直接流转动作，可尝试撤销流转{' '*(30)}│")
+        print(f"    │  [下一步] 下一步操作: 无直接流转动作，可尝试撤销流转{' '*(30)}│")
     else:
-        print(f"    │  ⏩ 下一步可执行操作 ({len(actions)} 项):{' '*(45)}│")
+        print(f"    │  [下一步] 下一步可执行操作 ({len(actions)} 项):{' '*(45)}│")
         for i, a in enumerate(actions, 1):
             role_tag = ""
             if a.get("role_missing"):
-                role_tag = " ⚠️权限不足"
+                role_tag = " [!!]权限不足"
             elif a.get("required_role"):
-                role_tag = " 🔒需" + a["required_role"]
+                role_tag = " [锁]需" + a["required_role"]
             else:
-                role_tag = " 🔓所有角色"
+                role_tag = " [开]所有角色"
             header = f"    {i}. 【{a['button_label']}】{role_tag}"
             print(f"    │  {header[:68]:<68}│")
             to_line = f"       执行后状态: 【{a['to_status']}】— {a['to_status_description']}"

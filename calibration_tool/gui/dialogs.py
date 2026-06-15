@@ -337,7 +337,7 @@ class HistoryDialog(tk.Toplevel):
             )
             if undo_info.get("reason"):
                 undo_text += f"\n原操作原因: {undo_info['reason']}"
-            if undo_info.get("can_undo"):
+            if undo_info.get("can_do"):
                 undo_text += "\n✅ 当前【复核员】角色可执行撤销"
                 undo_color = "#27ae60"
             elif undo_info.get("undo_role_missing"):

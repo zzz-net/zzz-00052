@@ -1,0 +1,14 @@
+[
+  {
+    "username": "operator1",
+    "role": "操作员"
+  },
+  {
+    "username": "operator2",
+    "role": "操作员"
+  },
+  {
+    "username": "reviewer1",
+    "role": "复核员"
+  }
+]

@@ -11,15 +11,22 @@ from .models import (
     ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
     ACTION_CANCEL, ACTION_UNDO, UNDOABLE_ACTIONS,
     parse_date, is_valid_date, add_days, _today_str, _now_str,
-    get_available_actions, get_status_info, get_action_info
+    get_available_actions, get_status_info, get_action_info,
+    setup_logger
 )
 from typing import Dict, Any
 from .storage import Storage, ValidationError, StorageError
 
 
 class CalibrationService:
-    def __init__(self, storage: Storage):
+    def __init__(self, storage: Storage, enable_file_log: bool = None):
         self.storage = storage
+        if enable_file_log is None:
+            enable_file_log = not os.environ.get("PYTEST_CURRENT_TEST")
+        self.logger = setup_logger(
+            storage.data_dir if storage else None,
+            enable_file_log=enable_file_log
+        )
 
     # ---- User helpers ----
     def get_current_user(self) -> User:
@@ -219,6 +226,10 @@ class CalibrationService:
             record_snapshot=snap_rec
         )
         self.storage.update_record(rec)
+        self.logger.info(
+            f"[STATE TRANSITION] 记录 {rec.instrument_code} ({rec.id}): "
+            f"{from_status} → {rec.status} | 操作: {ACTION_SUBMIT} | 操作人: {user.username} | 结果: {result}"
+        )
         return rec
 
     def send_for_review(self, record_id: str, user: User) -> CalibrationRecord:
@@ -241,6 +252,10 @@ class CalibrationService:
             record_snapshot=snap_rec
         )
         self.storage.update_record(rec)
+        self.logger.info(
+            f"[STATE TRANSITION] 记录 {rec.instrument_code} ({rec.id}): "
+            f"{from_status} → {rec.status} | 操作: {ACTION_SEND_REVIEW} | 操作人: {user.username}"
+        )
         return rec
 
     def review_archive(self, record_id: str, user: User,
@@ -273,6 +288,10 @@ class CalibrationService:
             record_snapshot=snap_rec
         )
         self.storage.update_record(rec)
+        self.logger.info(
+            f"[STATE TRANSITION] 记录 {rec.instrument_code} ({rec.id}): "
+            f"{from_status} → {rec.status} | 操作: {ACTION_REVIEW_ARCHIVE} | 操作人: {user.username} | 复核意见: {review_comment[:50]}"
+        )
         return rec
 
     def cancel_record(self, record_id: str, user: User,
@@ -306,6 +325,10 @@ class CalibrationService:
             record_snapshot=snap_rec
         )
         self.storage.update_record(rec)
+        self.logger.warning(
+            f"[RECORD CANCELLED] 记录 {rec.instrument_code} ({rec.id}): "
+            f"{from_status} → {rec.status} | 操作: {ACTION_CANCEL} | 操作人: {user.username} | 原因: {cancel_reason}"
+        )
         return rec
 
     # ---- Undo last transition ----
@@ -360,13 +383,23 @@ class CalibrationService:
         self.storage.update_history(last)
 
         self.storage.update_record(rec)
+        self.logger.warning(
+            f"[TRANSITION UNDONE] 记录 {rec.instrument_code} ({rec.id}): "
+            f"{from_status} → {to_status} | 撤销操作: {last.action} | 操作人: {user.username} | 撤销人: {last.undone_by}"
+        )
         return rec
 
     # ---- Transition Summary (Single source of truth) ----
     def get_transition_summary(self, record_id: str, user: User = None) -> Dict[str, Any]:
         rec = self.storage.get_record_by_id(record_id)
         if rec is None:
+            self.logger.error(f"[SUMMARY ERROR] 记录不存在: {record_id}")
             raise StorageError(f"校准记录不存在: {record_id}")
+
+        self.logger.debug(
+            f"[SUMMARY GENERATED] 记录 {rec.instrument_code} ({record_id}): "
+            f"状态={rec.status} | 查询用户={user.username if user else '未指定'} | 角色={user.role if user else '未指定'}"
+        )
 
         user_role = user.role if user else None
 
@@ -436,6 +469,10 @@ class CalibrationService:
     def export_csv(self, filepath: str, records: Optional[List[CalibrationRecord]] = None) -> int:
         if records is None:
             records = self.storage.load_records()
+
+        self.logger.info(
+            f"[EXPORT CSV] 开始导出: {filepath} | 记录数: {len(records)}"
+        )
         fieldnames = [
             "id", "instrument_code", "instrument_name", "planned_date",
             "status", "operator", "actual_date", "result", "is_overdue",
@@ -463,11 +500,16 @@ class CalibrationService:
                     row["last_undoable_action"] = ""
                     row["undo_returns_to_status"] = ""
                 writer.writerow(row)
+        self.logger.info(f"[EXPORT CSV] 导出完成: {filepath} | 共 {len(records)} 条记录")
         return len(records)
 
     def export_html(self, filepath: str, records: Optional[List[CalibrationRecord]] = None) -> int:
         if records is None:
             records = self.storage.load_records()
+
+        self.logger.info(
+            f"[EXPORT HTML] 开始导出: {filepath} | 记录数: {len(records)}"
+        )
         headers = ["编号", "仪器编号", "仪器名称", "计划日期", "状态", "状态说明", "为什么在这",
                    "操作员", "实际日期", "结果", "超期", "超期原因",
                    "复核人", "复核意见", "证书摘要", "流转次数", "可撤销次数",
@@ -606,4 +648,5 @@ tr:nth-child(even) {{ background-color: #f9f9f9; }}
 </body></html>"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)
+        self.logger.info(f"[EXPORT HTML] 导出完成: {filepath} | 共 {len(records)} 条记录")
         return len(records)

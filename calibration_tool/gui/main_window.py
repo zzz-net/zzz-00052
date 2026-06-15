@@ -223,7 +223,7 @@ class App(tk.Tk):
             ]
             if undo_info["reason"]:
                 undo_parts.append(f"原操作原因: {undo_info['reason']}")
-            if undo_info["can_undo"]:
+            if undo_info["can_do"]:
                 undo_parts.append("✅ 当前角色【复核员】可执行撤销")
                 undo_color = "#27ae60"
             elif undo_info["undo_role_missing"]:

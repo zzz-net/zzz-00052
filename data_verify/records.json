@@ -1,7 +1,7 @@
 [
   {
-    "id": "cfc132b6273f",
-    "instrument_id": "2a11d68038b5",
+    "id": "8244193a32bf",
+    "instrument_id": "8af0209b4498",
     "instrument_code": "MANUAL-001",
     "instrument_name": "手动验证仪器A",
     "planned_date": "2027-05-16",
@@ -22,8 +22,8 @@
     "instrument_last_calibration_before": "2026-05-16"
   },
   {
-    "id": "a1c784006177",
-    "instrument_id": "a924967af0bb",
+    "id": "ec3a05c8eba6",
+    "instrument_id": "4398c8d70110",
     "instrument_code": "MANUAL-002",
     "instrument_name": "取消vs撤销 对比仪器",
     "planned_date": "2027-05-31",
@@ -44,8 +44,8 @@
     "instrument_last_calibration_before": null
   },
   {
-    "id": "1c7eaa9f1406",
-    "instrument_id": "a924967af0bb",
+    "id": "e91dc7c260b6",
+    "instrument_id": "4398c8d70110",
     "instrument_code": "MANUAL-002",
     "instrument_name": "取消vs撤销 对比仪器",
     "planned_date": "2027-05-31",
@@ -66,8 +66,8 @@
     "instrument_last_calibration_before": null
   },
   {
-    "id": "abf3c8ef5654",
-    "instrument_id": "5bbe5d432434",
+    "id": "f3aa8cf7e44d",
+    "instrument_id": "83cbe621f02e",
     "instrument_code": "MANUAL-003",
     "instrument_name": "仅撤销不取消 仪器",
     "planned_date": "2027-06-05",

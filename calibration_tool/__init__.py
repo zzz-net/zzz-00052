@@ -6,7 +6,8 @@ from .models import (
     ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
     ACTION_CANCEL, ACTION_UNDO, UNDOABLE_ACTIONS,
     STATUS_RULES, ACTION_RULES,
-    get_available_actions, get_status_info, get_action_info
+    get_available_actions, get_status_info, get_action_info,
+    setup_logger, close_logger
 )
 from .storage import Storage, ValidationError, StorageError
 from .service import CalibrationService
@@ -21,5 +22,6 @@ __all__ = [
     "ACTION_CANCEL", "ACTION_UNDO", "UNDOABLE_ACTIONS",
     "STATUS_RULES", "ACTION_RULES",
     "get_available_actions", "get_status_info", "get_action_info",
+    "setup_logger", "close_logger",
     "Storage", "ValidationError", "StorageError", "CalibrationService",
 ]

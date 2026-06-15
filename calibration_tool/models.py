@@ -2,6 +2,51 @@ from dataclasses import dataclass, field, asdict
 from datetime import date, datetime
 from typing import Optional, List
 import uuid
+import logging
+import os
+
+def setup_logger(data_dir: str = None, enable_file_log: bool = True) -> logging.Logger:
+    logger = logging.getLogger("calibration_tool")
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+    logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    if data_dir and enable_file_log:
+        os.makedirs(data_dir, exist_ok=True)
+        log_file = os.path.join(data_dir, "calibration_tool.log")
+        try:
+            file_handler = logging.FileHandler(log_file, encoding="utf-8", delay=True)
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except (PermissionError, OSError):
+            pass
+
+    logger.propagate = False
+    return logger
+
+
+def close_logger():
+    logger = logging.getLogger("calibration_tool")
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
 
 
 STATUS_PENDING = "待执行"

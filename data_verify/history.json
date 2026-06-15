@@ -1,15 +1,15 @@
 [
   {
-    "id": "313a2148acfa",
-    "record_id": "cfc132b6273f",
+    "id": "462264dfbab1",
+    "record_id": "8244193a32bf",
     "action": "录入校准",
     "from_status": "待执行",
     "to_status": "已完成",
     "by_user": "op1_manual",
     "reason": "",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -30,7 +30,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "2a11d68038b5",
+      "id": "8af0209b4498",
       "code": "MANUAL-001",
       "name": "手动验证仪器A",
       "model": "验证型号",
@@ -43,22 +43,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 13:30:24",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": true,
     "undone_by": "rv1_manual",
-    "undone_at": "2026-06-15 13:30:25"
+    "undone_at": "2026-06-15 15:57:34"
   },
   {
-    "id": "56f91f389bf6",
-    "record_id": "cfc132b6273f",
+    "id": "ff7ef0b06196",
+    "record_id": "8244193a32bf",
     "action": "提交复核",
     "from_status": "已完成",
     "to_status": "待复核",
     "by_user": "op1_manual",
     "reason": "",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -79,22 +79,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": true,
     "undone_by": "rv1_manual",
-    "undone_at": "2026-06-15 13:30:25"
+    "undone_at": "2026-06-15 15:57:34"
   },
   {
-    "id": "2eab9f00c563",
-    "record_id": "a1c784006177",
+    "id": "5a3d471fc1b2",
+    "record_id": "ec3a05c8eba6",
     "action": "取消记录",
     "from_status": "待执行",
     "to_status": "取消",
     "by_user": "rv1_manual",
     "reason": "此仪器送检中，3.1取消",
     "record_snapshot": {
-      "id": "a1c784006177",
-      "instrument_id": "a924967af0bb",
+      "id": "ec3a05c8eba6",
+      "instrument_id": "4398c8d70110",
       "instrument_code": "MANUAL-002",
       "instrument_name": "取消vs撤销 对比仪器",
       "planned_date": "2027-05-31",
@@ -115,7 +115,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "a924967af0bb",
+      "id": "4398c8d70110",
       "code": "MANUAL-002",
       "name": "取消vs撤销 对比仪器",
       "model": "",
@@ -128,22 +128,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "abab7129af9b",
-    "record_id": "abf3c8ef5654",
+    "id": "dabf688fe570",
+    "record_id": "f3aa8cf7e44d",
     "action": "录入校准",
     "from_status": "待执行",
     "to_status": "已完成",
     "by_user": "op1_manual",
     "reason": "",
     "record_snapshot": {
-      "id": "abf3c8ef5654",
-      "instrument_id": "5bbe5d432434",
+      "id": "f3aa8cf7e44d",
+      "instrument_id": "83cbe621f02e",
       "instrument_code": "MANUAL-003",
       "instrument_name": "仅撤销不取消 仪器",
       "planned_date": "2027-06-05",
@@ -164,7 +164,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "5bbe5d432434",
+      "id": "83cbe621f02e",
       "code": "MANUAL-003",
       "name": "仅撤销不取消 仪器",
       "model": "",
@@ -177,22 +177,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": true,
     "undone_by": "rv1_manual",
-    "undone_at": "2026-06-15 13:30:25"
+    "undone_at": "2026-06-15 15:57:34"
   },
   {
-    "id": "f197f2f71d6c",
-    "record_id": "abf3c8ef5654",
+    "id": "b4f90af533c0",
+    "record_id": "f3aa8cf7e44d",
     "action": "撤销流转",
     "from_status": "已完成",
     "to_status": "待执行",
     "by_user": "rv1_manual",
     "reason": "撤销操作：录入校准",
     "record_snapshot": {
-      "id": "abf3c8ef5654",
-      "instrument_id": "5bbe5d432434",
+      "id": "f3aa8cf7e44d",
+      "instrument_id": "83cbe621f02e",
       "instrument_code": "MANUAL-003",
       "instrument_name": "仅撤销不取消 仪器",
       "planned_date": "2027-06-05",
@@ -213,7 +213,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "5bbe5d432434",
+      "id": "83cbe621f02e",
       "code": "MANUAL-003",
       "name": "仅撤销不取消 仪器",
       "model": "",
@@ -226,22 +226,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "e553f988fc72",
-    "record_id": "cfc132b6273f",
+    "id": "b720eb2cbf3e",
+    "record_id": "8244193a32bf",
     "action": "复核归档",
     "from_status": "待复核",
     "to_status": "归档",
     "by_user": "rv1_manual",
     "reason": "流程合规，4.1归档",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -262,22 +262,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": true,
     "undone_by": "rv1_manual",
-    "undone_at": "2026-06-15 13:30:25"
+    "undone_at": "2026-06-15 15:57:34"
   },
   {
-    "id": "a12395398c9a",
-    "record_id": "cfc132b6273f",
+    "id": "04541fec2448",
+    "record_id": "8244193a32bf",
     "action": "撤销流转",
     "from_status": "归档",
     "to_status": "待复核",
     "by_user": "rv1_manual",
     "reason": "撤销操作：复核归档",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -298,22 +298,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "16a6837e0f87",
-    "record_id": "cfc132b6273f",
+    "id": "c34b3dbe02d6",
+    "record_id": "8244193a32bf",
     "action": "撤销流转",
     "from_status": "待复核",
     "to_status": "已完成",
     "by_user": "rv1_manual",
     "reason": "撤销操作：提交复核",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -334,22 +334,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "4e1c9a2e2feb",
-    "record_id": "cfc132b6273f",
+    "id": "050ddd1e9500",
+    "record_id": "8244193a32bf",
     "action": "撤销流转",
     "from_status": "已完成",
     "to_status": "待执行",
     "by_user": "rv1_manual",
     "reason": "撤销操作：录入校准",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -370,7 +370,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "2a11d68038b5",
+      "id": "8af0209b4498",
       "code": "MANUAL-001",
       "name": "手动验证仪器A",
       "model": "验证型号",
@@ -383,22 +383,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "41d9c65fa966",
-    "record_id": "cfc132b6273f",
+    "id": "6718d146f27c",
+    "record_id": "8244193a32bf",
     "action": "录入校准",
     "from_status": "待执行",
     "to_status": "已完成",
     "by_user": "op1_manual",
     "reason": "",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -419,7 +419,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "2a11d68038b5",
+      "id": "8af0209b4498",
       "code": "MANUAL-001",
       "name": "手动验证仪器A",
       "model": "验证型号",
@@ -432,22 +432,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "2e3c9c5c850c",
-    "record_id": "cfc132b6273f",
+    "id": "ca867d12f7fc",
+    "record_id": "8244193a32bf",
     "action": "提交复核",
     "from_status": "已完成",
     "to_status": "待复核",
     "by_user": "op1_manual",
     "reason": "",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -468,22 +468,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "e4fb69c856cd",
-    "record_id": "cfc132b6273f",
+    "id": "28ddd0a28109",
+    "record_id": "8244193a32bf",
     "action": "复核归档",
     "from_status": "待复核",
     "to_status": "归档",
     "by_user": "rv1_manual",
     "reason": "5.1复核导出一致性测试",
     "record_snapshot": {
-      "id": "cfc132b6273f",
-      "instrument_id": "2a11d68038b5",
+      "id": "8244193a32bf",
+      "instrument_id": "8af0209b4498",
       "instrument_code": "MANUAL-001",
       "instrument_name": "手动验证仪器A",
       "planned_date": "2027-05-16",
@@ -504,7 +504,7 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 13:30:25",
+    "created_at": "2026-06-15 15:57:34",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
