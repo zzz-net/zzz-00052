@@ -1,3 +1,3 @@
 ﻿id,instrument_code,instrument_name,planned_date,status,operator,actual_date,result,is_overdue,overdue_reason,reviewer,review_comment,certificate_summary,cancelled_by,cancel_reason,created_at,updated_at,archived_at
-f37adae16bf2,TEST-001,测试仪器,2027-05-16,待复核,op1,2026-06-15,合格,False,,,,证书编号 CERT-2024-001,,,2026-06-15,2026-06-15,
-cbd0dbca46a5,TEST-002,测试仪器2,2026-12-02,取消,,,,False,,,,,rv1,测试导出包含取消记录,2026-06-15,2026-06-15,
+d244f48a15ff,TEST-001,测试仪器,2027-05-16,待复核,op1,2026-06-15,合格,False,,,,证书编号 CERT-2024-001,,,2026-06-15,2026-06-15,
+e73e9d8ea0ce,TEST-002,测试仪器2,2026-12-02,取消,,,,False,,,,,rv1,测试导出包含取消记录,2026-06-15,2026-06-15,

@@ -1,15 +1,15 @@
 [
   {
-    "id": "a7bba7fb9a5e",
-    "record_id": "f37adae16bf2",
+    "id": "d20daceed3ab",
+    "record_id": "d244f48a15ff",
     "action": "录入校准",
     "from_status": "待执行",
     "to_status": "已完成",
     "by_user": "op1",
     "reason": "",
     "record_snapshot": {
-      "id": "f37adae16bf2",
-      "instrument_id": "00c909636dff",
+      "id": "d244f48a15ff",
+      "instrument_id": "0d4783875f3e",
       "instrument_code": "TEST-001",
       "instrument_name": "测试仪器",
       "planned_date": "2027-05-16",
@@ -30,7 +30,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "00c909636dff",
+      "id": "0d4783875f3e",
       "code": "TEST-001",
       "name": "测试仪器",
       "model": "型号X",
@@ -43,22 +43,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "1484397e4aa6",
-    "record_id": "f37adae16bf2",
+    "id": "bf4b8e5447d5",
+    "record_id": "d244f48a15ff",
     "action": "提交复核",
     "from_status": "已完成",
     "to_status": "待复核",
     "by_user": "op1",
     "reason": "",
     "record_snapshot": {
-      "id": "f37adae16bf2",
-      "instrument_id": "00c909636dff",
+      "id": "d244f48a15ff",
+      "instrument_id": "0d4783875f3e",
       "instrument_code": "TEST-001",
       "instrument_name": "测试仪器",
       "planned_date": "2027-05-16",
@@ -79,22 +79,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "210bec7fe572",
-    "record_id": "f37adae16bf2",
+    "id": "f8df7947d873",
+    "record_id": "d244f48a15ff",
     "action": "取消记录",
     "from_status": "待复核",
     "to_status": "取消",
     "by_user": "rv1",
     "reason": "仪器送修，暂时无法校准",
     "record_snapshot": {
-      "id": "f37adae16bf2",
-      "instrument_id": "00c909636dff",
+      "id": "d244f48a15ff",
+      "instrument_id": "0d4783875f3e",
       "instrument_code": "TEST-001",
       "instrument_name": "测试仪器",
       "planned_date": "2027-05-16",
@@ -115,7 +115,7 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {
-      "id": "00c909636dff",
+      "id": "0d4783875f3e",
       "code": "TEST-001",
       "name": "测试仪器",
       "model": "型号X",
@@ -128,22 +128,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": true,
     "undone_by": "rv1",
-    "undone_at": "2026-06-15 08:16:07"
+    "undone_at": "2026-06-15 11:22:39"
   },
   {
-    "id": "50803cdd4478",
-    "record_id": "f37adae16bf2",
+    "id": "47368723335c",
+    "record_id": "d244f48a15ff",
     "action": "撤销流转",
     "from_status": "取消",
     "to_status": "待复核",
     "by_user": "rv1",
     "reason": "撤销操作：取消记录",
     "record_snapshot": {
-      "id": "f37adae16bf2",
-      "instrument_id": "00c909636dff",
+      "id": "d244f48a15ff",
+      "instrument_id": "0d4783875f3e",
       "instrument_code": "TEST-001",
       "instrument_name": "测试仪器",
       "planned_date": "2027-05-16",
@@ -164,7 +164,7 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {
-      "id": "00c909636dff",
+      "id": "0d4783875f3e",
       "code": "TEST-001",
       "name": "测试仪器",
       "model": "型号X",
@@ -177,22 +177,22 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "779f599a2aad",
-    "record_id": "f37adae16bf2",
+    "id": "e8f49130fae1",
+    "record_id": "d244f48a15ff",
     "action": "复核归档",
     "from_status": "待复核",
     "to_status": "归档",
     "by_user": "rv1",
     "reason": "结果合格，校准周期内完成，同意归档",
     "record_snapshot": {
-      "id": "f37adae16bf2",
-      "instrument_id": "00c909636dff",
+      "id": "d244f48a15ff",
+      "instrument_id": "0d4783875f3e",
       "instrument_code": "TEST-001",
       "instrument_name": "测试仪器",
       "planned_date": "2027-05-16",
@@ -213,22 +213,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": true,
     "undone_by": "rv1",
-    "undone_at": "2026-06-15 08:16:07"
+    "undone_at": "2026-06-15 11:22:39"
   },
   {
-    "id": "311eb356b396",
-    "record_id": "f37adae16bf2",
+    "id": "8ee7c0a6081d",
+    "record_id": "d244f48a15ff",
     "action": "撤销流转",
     "from_status": "归档",
     "to_status": "待复核",
     "by_user": "rv1",
     "reason": "撤销操作：复核归档",
     "record_snapshot": {
-      "id": "f37adae16bf2",
-      "instrument_id": "00c909636dff",
+      "id": "d244f48a15ff",
+      "instrument_id": "0d4783875f3e",
       "instrument_code": "TEST-001",
       "instrument_name": "测试仪器",
       "planned_date": "2027-05-16",
@@ -249,22 +249,22 @@
       "instrument_last_calibration_before": "2026-05-16"
     },
     "instrument_snapshot": {},
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
   },
   {
-    "id": "6e137f577e75",
-    "record_id": "cbd0dbca46a5",
+    "id": "f713f8b9a728",
+    "record_id": "e73e9d8ea0ce",
     "action": "取消记录",
     "from_status": "待执行",
     "to_status": "取消",
     "by_user": "rv1",
     "reason": "测试导出包含取消记录",
     "record_snapshot": {
-      "id": "cbd0dbca46a5",
-      "instrument_id": "5a534ee9cfad",
+      "id": "e73e9d8ea0ce",
+      "instrument_id": "8303fbaba858",
       "instrument_code": "TEST-002",
       "instrument_name": "测试仪器2",
       "planned_date": "2026-12-02",
@@ -285,7 +285,7 @@
       "instrument_last_calibration_before": null
     },
     "instrument_snapshot": {
-      "id": "5a534ee9cfad",
+      "id": "8303fbaba858",
       "code": "TEST-002",
       "name": "测试仪器2",
       "model": "",
@@ -298,7 +298,7 @@
       "created_at": "2026-06-15",
       "is_active": true
     },
-    "created_at": "2026-06-15 08:16:07",
+    "created_at": "2026-06-15 11:22:39",
     "is_undone": false,
     "undone_by": "",
     "undone_at": null
