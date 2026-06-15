@@ -11,7 +11,7 @@
 - **状态流转**（规则来源：`ACTION_RULES`）：
   - 待执行 → 录入校准结果 → 已完成
   - 已完成 → 提交复核 → 待复核
-  - 待复核 → 复核归档 → 归档
+  - 待复核 → 复核归档 → 归档（**终态，不可撤销**）
   - 任一步骤均可由复核员**取消**（记录取消原因）
 - **操作摘要面板**：选中记录后实时显示（数据来源：`get_transition_summary()`）：
   - 当前状态及含义（来源：`STATUS_RULES[status].description`）
@@ -221,13 +221,39 @@ python -m unittest test_flow.TestTransitionHistory -v
 1. **物理删除问题**：`cancel_record` 将记录从 `records.json` 删除并移动到 `cancelled_records.json`，导致原状态不可追溯
 2. **无历史追踪**：每次状态流转不记录"之前是什么状态、改了什么"，误操作后无法恢复
 3. **无撤销能力**：取消操作等同于删除，没有回滚机制
+4. **信息分散**：界面提示、README、导出结果、验证脚本各说各话，没有统一的判断来源
+5. **可见性不足**：用户无法直观知道"为什么停在这个状态、下一步能做什么、需要什么角色、能否撤销"
 
-### 修复方案
-1. **[models.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/models.py)**：新增 `TransitionLog` 数据类，记录每次流转的状态变化、操作人、原因、完整快照
-2. **[storage.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/storage.py)**：新增 `history.json` 读写接口，`cancel_record` 不再搬移记录
-3. **[service.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/service.py)**：
+### 修复方案（单源真相架构）
+
+#### 核心规则层（唯一真相来源）
+1. **[models.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/models.py)**：
+   - 新增 `STATUS_RULES` 字典：统一定义所有状态的说明、到达途径、颜色
+   - 新增 `ACTION_RULES` 字典：统一定义所有操作的允许状态、所需角色、目标状态、撤销返回
+   - 新增 `get_available_actions()`、`get_status_info()`、`get_action_info()` 统一查询接口
+   - 新增 `TransitionLog` 数据类，记录每次流转的状态变化、操作人、原因、完整快照
+   - 新增 `setup_logger()` 日志配置，统一日志格式
+
+#### 业务逻辑层（复用核心规则）
+2. **[service.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/service.py)**：
    - 每次流转（录入/提交/复核/取消）前保存快照，写入 `TransitionLog`
+   - 新增 `get_transition_summary()` 方法：统一生成操作摘要（界面、导出、校验共用）
    - 新增 `undo_last_transition()` 方法，从最近一次可撤销操作的快照恢复
-   - 导出时包含所有状态记录
-4. **[gui/main_window.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/gui/main_window.py)**：各标签页新增「查看历史」和「撤销上一次流转」按钮
-5. **[gui/dialogs.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/gui/dialogs.py)**：新增 `HistoryDialog` 历史查看对话框
+   - 导出时调用 `get_transition_summary()` 确保与界面显示一致
+   - 所有关键操作记录日志（状态流转、撤销、导出、错误）
+
+#### 存储层
+3. **[storage.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/storage.py)**：新增 `history.json` 读写接口，`cancel_record` 不再搬移记录
+
+#### UI层（复用业务逻辑层摘要）
+4. **[gui/main_window.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/gui/main_window.py)**：
+   - 新增「操作摘要」面板，调用 `get_transition_summary()` 显示
+   - 显示：当前状态、为什么在这、流转统计、撤销信息、下一步操作
+   - 各标签页新增「查看历史」和「撤销上一次流转」按钮
+5. **[gui/dialogs.py](file:///d:/workSpace/AI__SPACE/zzz-00052/calibration_tool/gui/dialogs.py)**：
+   - 新增 `HistoryDialog` 历史查看对话框，顶部内嵌操作摘要面板（与主界面共用同一来源）
+
+#### 文档与验证层（引用核心规则）
+6. **[README.md](file:///d:/workSpace/AI__SPACE/zzz-00052/README.md)**：所有状态、操作、权限说明均引用 `STATUS_RULES` 和 `ACTION_RULES`
+7. **[test_flow.py](file:///d:/workSpace/AI__SPACE/zzz-00052/test_flow.py)**：30+ 自动化测试用例，覆盖摘要、权限、撤销、导出、重启一致性
+8. **[verify_gui_feedback.py](file:///d:/workSpace/AI__SPACE/zzz-00052/verify_gui_feedback.py)**：CLI综合验证脚本，覆盖所有手动验证链路

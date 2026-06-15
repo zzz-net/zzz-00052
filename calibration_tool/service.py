@@ -12,6 +12,10 @@ from .models import (
     ACTION_CANCEL, ACTION_UNDO, UNDOABLE_ACTIONS,
     parse_date, is_valid_date, add_days, _today_str, _now_str,
     get_available_actions, get_status_info, get_action_info,
+    is_terminal_status, get_terminal_rule,
+    can_undo_action, can_undo_status, can_cancel_status,
+    get_undo_denied_reason, get_cancel_denied_reason,
+    get_status_summary_label,
     setup_logger
 )
 from typing import Dict, Any
@@ -302,10 +306,8 @@ class CalibrationService:
         rec = self.storage.get_record_by_id(record_id)
         if rec is None:
             raise StorageError(f"校准记录不存在: {record_id}")
-        if rec.status == STATUS_ARCHIVED:
-            raise ValidationError(f"'{STATUS_ARCHIVED}'状态的记录无法取消")
-        if rec.status == STATUS_CANCELLED:
-            raise ValidationError(f"记录已处于取消状态")
+        if not can_cancel_status(rec.status):
+            raise ValidationError(get_cancel_denied_reason(rec.status))
 
         from_status = rec.status
         snap_rec = rec.snapshot()
@@ -341,14 +343,25 @@ class CalibrationService:
 
         last = self.storage.get_last_undoable_transition(record_id)
         if last is None:
+            rec = self.storage.get_record_by_id(record_id)
+            if rec is not None:
+                denied_reason = get_undo_denied_reason(rec.status, last.action if last else None)
+                if denied_reason:
+                    raise ValidationError(denied_reason)
             raise ValidationError("该记录无可撤销的流转操作")
 
         rec = self.storage.get_record_by_id(record_id)
         if rec is None:
             raise StorageError(f"校准记录不存在: {record_id}")
 
+        if not can_undo_status(rec.status):
+            raise ValidationError(get_undo_denied_reason(rec.status))
+
         if rec.status != last.to_status:
             raise ValidationError("记录当前状态与最后一次流转不符，无法撤销")
+
+        if not can_undo_action(last.action):
+            raise ValidationError(get_undo_denied_reason(rec.status, last.action))
 
         snap_before = last.record_snapshot
         if not snap_before:
@@ -399,40 +412,70 @@ class CalibrationService:
         self.logger.debug(
             f"[SUMMARY GENERATED] 记录 {rec.instrument_code} ({record_id}): "
             f"状态={rec.status} | 查询用户={user.username if user else '未指定'} | 角色={user.role if user else '未指定'}"
+            f" | 是否终态={is_terminal_status(rec.status)}"
         )
 
         user_role = user.role if user else None
 
+        is_terminal = is_terminal_status(rec.status)
+        terminal_rule = get_terminal_rule(rec.status)
+        terminal_reason = terminal_rule["reason"] if terminal_rule else ""
+
         status_info = get_status_info(rec.status)
         available_actions = get_available_actions(rec.status, user_role)
 
-        last_undoable = self.get_undoable_transition(record_id)
         undo_info = None
-        if last_undoable:
-            action_rule = get_action_info(last_undoable.action)
-            undo_returns_to_status = last_undoable.from_status
-            if action_rule["undo_returns_to"] is not None:
-                undo_returns_to_status = action_rule["undo_returns_to"]
-            undo_returns_info = get_status_info(undo_returns_to_status)
-
-            can_undo = (user_role == ROLE_REVIEWER) if user_role is not None else False
-            undo_role_missing = (user_role is not None and user_role != ROLE_REVIEWER)
-
+        if is_terminal:
             undo_info = {
-                "action": last_undoable.action,
-                "action_description": action_rule["description"],
-                "by_user": last_undoable.by_user,
-                "created_at": last_undoable.created_at,
-                "from_status": last_undoable.from_status,
-                "to_status": last_undoable.to_status,
-                "undo_returns_to_status": undo_returns_to_status,
-                "undo_returns_to_description": action_rule["undo_returns_to_description"],
-                "undo_returns_to_status_info": undo_returns_info,
-                "reason": last_undoable.reason,
-                "can_do": can_undo,
-                "undo_role_missing": undo_role_missing,
+                "is_terminal": True,
+                "terminal_reason": terminal_reason,
+                "action": "",
+                "action_description": "",
+                "by_user": "",
+                "created_at": "",
+                "from_status": "",
+                "to_status": rec.status,
+                "undo_returns_to_status": "",
+                "undo_returns_to_description": terminal_reason,
+                "undo_returns_to_status_info": get_status_info(rec.status),
+                "reason": "",
+                "can_do": False,
+                "undo_role_missing": False,
                 "required_role": ROLE_REVIEWER,
             }
+            self.logger.debug(
+                f"[SUMMARY TERMINAL] 记录 {rec.instrument_code} ({record_id}) "
+                f"处于终态「{rec.status}」: {terminal_reason}"
+            )
+        else:
+            last_undoable = self.get_undoable_transition(record_id)
+            if last_undoable:
+                action_rule = get_action_info(last_undoable.action)
+                undo_returns_to_status = last_undoable.from_status
+                if action_rule["undo_returns_to"] is not None:
+                    undo_returns_to_status = action_rule["undo_returns_to"]
+                undo_returns_info = get_status_info(undo_returns_to_status)
+
+                can_undo = (user_role == ROLE_REVIEWER) if user_role is not None else False
+                undo_role_missing = (user_role is not None and user_role != ROLE_REVIEWER)
+
+                undo_info = {
+                    "is_terminal": False,
+                    "terminal_reason": "",
+                    "action": last_undoable.action,
+                    "action_description": action_rule["description"],
+                    "by_user": last_undoable.by_user,
+                    "created_at": last_undoable.created_at,
+                    "from_status": last_undoable.from_status,
+                    "to_status": last_undoable.to_status,
+                    "undo_returns_to_status": undo_returns_to_status,
+                    "undo_returns_to_description": action_rule["undo_returns_to_description"],
+                    "undo_returns_to_status_info": undo_returns_info,
+                    "reason": last_undoable.reason,
+                    "can_do": can_undo,
+                    "undo_role_missing": undo_role_missing,
+                    "required_role": ROLE_REVIEWER,
+                }
 
         history = self.list_history(record_id)
         history_count = len(history)
@@ -447,6 +490,8 @@ class CalibrationService:
                 why_here = f"通过「{last_log.action}」操作于 {last_log.created_at} 到达此状态，操作人: {last_log.by_user}"
                 if last_log.reason:
                     why_here += f"，原因: {last_log.reason}"
+                if is_terminal and last_log.action == ACTION_REVIEW_ARCHIVE:
+                    why_here += f"（{terminal_reason}）"
         else:
             why_here = "通过「生成校准计划」功能创建，尚未执行任何流转操作"
 
@@ -456,6 +501,9 @@ class CalibrationService:
             "instrument_name": rec.instrument_name,
             "current_status": rec.status,
             "current_status_info": status_info,
+            "is_terminal": is_terminal,
+            "terminal_reason": terminal_reason,
+            "status_label": get_status_summary_label(rec.status),
             "why_here": why_here,
             "available_actions": available_actions,
             "undo_info": undo_info,
@@ -479,6 +527,7 @@ class CalibrationService:
             "overdue_reason", "reviewer", "review_comment",
             "certificate_summary", "cancelled_by", "cancel_reason",
             "created_at", "updated_at", "archived_at",
+            "is_terminal", "terminal_reason",
             "status_description", "why_here", "history_count",
             "undo_count", "last_undoable_action", "undo_returns_to_status"
         ]
@@ -489,11 +538,13 @@ class CalibrationService:
                 summary = self.get_transition_summary(r.id)
                 row = {k: (getattr(r, k) if getattr(r, k) is not None else "")
                        for k in fieldnames[:18]}
+                row["is_terminal"] = "是" if summary.get("is_terminal") else "否"
+                row["terminal_reason"] = summary.get("terminal_reason", "")
                 row["status_description"] = summary["current_status_info"].get("description", "")
                 row["why_here"] = summary["why_here"]
                 row["history_count"] = summary["history_count"]
                 row["undo_count"] = summary["undo_count"]
-                if summary["undo_info"]:
+                if summary["undo_info"] and not summary["undo_info"].get("is_terminal"):
                     row["last_undoable_action"] = summary["undo_info"]["action"]
                     row["undo_returns_to_status"] = summary["undo_info"]["undo_returns_to_status"]
                 else:
@@ -510,12 +561,12 @@ class CalibrationService:
         self.logger.info(
             f"[EXPORT HTML] 开始导出: {filepath} | 记录数: {len(records)}"
         )
-        headers = ["编号", "仪器编号", "仪器名称", "计划日期", "状态", "状态说明", "为什么在这",
+        headers = ["编号", "仪器编号", "仪器名称", "计划日期", "状态", "终态", "终态原因", "状态说明", "为什么在这",
                    "操作员", "实际日期", "结果", "超期", "超期原因",
                    "复核人", "复核意见", "证书摘要", "流转次数", "可撤销次数",
                    "最近可撤销操作", "撤销返回状态", "创建时间", "归档时间"]
         keys = ["id", "instrument_code", "instrument_name", "planned_date",
-                "status", "status_description", "why_here",
+                "status", "is_terminal", "terminal_reason", "status_description", "why_here",
                 "operator", "actual_date", "result", "is_overdue",
                 "overdue_reason", "reviewer", "review_comment",
                 "certificate_summary", "history_count", "undo_count",
@@ -528,6 +579,10 @@ class CalibrationService:
             for k in keys:
                 if k == "status_description":
                     v = summary["current_status_info"].get("description", "")
+                elif k == "is_terminal":
+                    v = "是(终态)" if summary.get("is_terminal") else "否"
+                elif k == "terminal_reason":
+                    v = summary.get("terminal_reason", "")
                 elif k == "why_here":
                     v = summary["why_here"]
                 elif k == "history_count":
@@ -535,9 +590,9 @@ class CalibrationService:
                 elif k == "undo_count":
                     v = str(summary["undo_count"])
                 elif k == "last_undoable_action":
-                    v = summary["undo_info"]["action"] if summary["undo_info"] else ""
+                    v = summary["undo_info"]["action"] if (summary["undo_info"] and not summary["undo_info"].get("is_terminal")) else ""
                 elif k == "undo_returns_to_status":
-                    v = summary["undo_info"]["undo_returns_to_status"] if summary["undo_info"] else ""
+                    v = summary["undo_info"]["undo_returns_to_status"] if (summary["undo_info"] and not summary["undo_info"].get("is_terminal")) else ""
                 else:
                     v = getattr(r, k)
                     if v is None:
@@ -581,9 +636,10 @@ tr:nth-child(even) {{ background-color: #f9f9f9; }}
 
 <div class="audit-info">
   <h3>📋 审计链路说明</h3>
-  <p><strong>数据来源：</strong>本导出文件与系统界面使用同一套流转规则定义（STATUS_RULES / ACTION_RULES），界面提示、规则校验、历史记录、导出内容共用唯一真相来源。</p>
-  <p><strong>字段说明：</strong>「状态说明」解释当前状态含义；「为什么在这」说明到达此状态的最近一次操作和原因；「最近可撤销操作」+「撤销返回状态」用于审计可追溯的回退路径。</p>
-  <p><strong>一致性保证：</strong>重启后重新打开系统，摘要、历史条数、可执行动作均从存储层加载，与导出时保持一致。</p>
+  <p><strong>数据来源：</strong>本导出文件与系统界面使用同一套流转规则定义（STATUS_RULES / ACTION_RULES / TERMINAL_RULES），界面提示、规则校验、历史记录、导出内容共用唯一真相来源。</p>
+  <p><strong>终态规则（唯一来源 TERMINAL_RULES）：</strong>归档为终态，校准流程全部完成，不可再撤销或变更。终态判断统一通过 <code>is_terminal_status()</code> 函数，所有模块共用。</p>
+  <p><strong>字段说明：</strong>「状态说明」解释当前状态含义；「为什么在这」说明到达此状态的最近一次操作和原因；「最近可撤销操作」+「撤销返回状态」用于审计可追溯的回退路径；「终态」+「终态原因」明确标识不可变更的记录。</p>
+  <p><strong>一致性保证：</strong>重启后重新打开系统，摘要、历史条数、可执行动作、终态标识均从存储层加载，与导出时保持一致。</p>
 </div>
 
 <div class="summary-section">
@@ -599,6 +655,7 @@ tr:nth-child(even) {{ background-color: #f9f9f9; }}
         reviewing_count = len([r for r in records if r.status == STATUS_REVIEWING])
         archived_count = len([r for r in records if r.status == STATUS_ARCHIVED])
         cancelled_count = len([r for r in records if r.status == STATUS_CANCELLED])
+        terminal_count = len([r for r in records if is_terminal_status(r.status)])
         total_history = sum(len(self.list_history(r.id)) for r in records)
         total_undoable = sum(1 for r in records if self.get_undoable_transition(r.id))
 
@@ -616,12 +673,16 @@ tr:nth-child(even) {{ background-color: #f9f9f9; }}
       <div class="value" style="color:#2980b9;">{reviewing_count}</div>
     </div>
     <div class="stat-card">
-      <div class="label">已归档</div>
+      <div class="label">已归档(终态)</div>
       <div class="value" style="color:#7f8c8d;">{archived_count}</div>
     </div>
     <div class="stat-card">
       <div class="label">已取消</div>
       <div class="value" style="color:#c0392b;">{cancelled_count}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">🔒 终态总数</div>
+      <div class="value" style="color:#2c3e50;">{terminal_count}</div>
     </div>
     <div class="stat-card">
       <div class="label">流转日志总条数</div>
@@ -636,8 +697,9 @@ tr:nth-child(even) {{ background-color: #f9f9f9; }}
     <div class="legend-item"><span class="legend-dot" style="background:#e67e22;"></span>待执行 - 等待操作员校准</div>
     <div class="legend-item"><span class="legend-dot" style="background:#27ae60;"></span>已完成 - 等待提交复核</div>
     <div class="legend-item"><span class="legend-dot" style="background:#2980b9;"></span>待复核 - 等待复核员归档</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#7f8c8d;"></span>归档 - 流程全部完成</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#7f8c8d;"></span>归档 - 终态，不可撤销</div>
     <div class="legend-item"><span class="legend-dot" style="background:#c0392b;"></span>取消 - 已取消可恢复</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#2c3e50;"></span>🔒 终态 - 不可变更</div>
   </div>
 </div>
 

@@ -10,7 +10,8 @@ from .models import (
     STATUS_ARCHIVED, STATUS_CANCELLED,
     ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
     ACTION_CANCEL, ACTION_UNDO, UNDOABLE_ACTIONS,
-    parse_date, is_valid_date
+    parse_date, is_valid_date,
+    is_terminal_status, can_undo_action, can_undo_status
 )
 
 
@@ -176,9 +177,11 @@ class Storage:
         rec = self.get_record_by_id(record_id)
         if rec is None:
             return None
+        if not can_undo_status(rec.status):
+            return None
         logs = [h for h in self.load_history()
                 if h.record_id == record_id and not h.is_undone
-                and h.action in UNDOABLE_ACTIONS
+                and can_undo_action(h.action)
                 and h.to_status == rec.status]
         logs.sort(key=lambda h: h.created_at, reverse=True)
         return logs[0] if logs else None

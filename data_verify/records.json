@@ -1,7 +1,7 @@
 [
   {
-    "id": "8244193a32bf",
-    "instrument_id": "8af0209b4498",
+    "id": "d0aefa78af8d",
+    "instrument_id": "937f75dc619b",
     "instrument_code": "MANUAL-001",
     "instrument_name": "手动验证仪器A",
     "planned_date": "2027-05-16",
@@ -12,8 +12,8 @@
     "is_overdue": false,
     "overdue_reason": "",
     "reviewer": "rv1_manual",
-    "review_comment": "5.1复核导出一致性测试",
-    "certificate_summary": "EXPORT-CERT-5.1",
+    "review_comment": "流程合规，4.1归档（终态）",
+    "certificate_summary": "MANUAL-CERT-001",
     "cancelled_by": "",
     "cancel_reason": "",
     "created_at": "2026-06-15",
@@ -22,8 +22,8 @@
     "instrument_last_calibration_before": "2026-05-16"
   },
   {
-    "id": "ec3a05c8eba6",
-    "instrument_id": "4398c8d70110",
+    "id": "62f8a298ef49",
+    "instrument_id": "7f7e3ba10905",
     "instrument_code": "MANUAL-002",
     "instrument_name": "取消vs撤销 对比仪器",
     "planned_date": "2027-05-31",
@@ -44,8 +44,8 @@
     "instrument_last_calibration_before": null
   },
   {
-    "id": "e91dc7c260b6",
-    "instrument_id": "4398c8d70110",
+    "id": "732dea3b7bee",
+    "instrument_id": "7f7e3ba10905",
     "instrument_code": "MANUAL-002",
     "instrument_name": "取消vs撤销 对比仪器",
     "planned_date": "2027-05-31",
@@ -66,8 +66,8 @@
     "instrument_last_calibration_before": null
   },
   {
-    "id": "f3aa8cf7e44d",
-    "instrument_id": "83cbe621f02e",
+    "id": "72929bd8ce44",
+    "instrument_id": "052269c1a105",
     "instrument_code": "MANUAL-003",
     "instrument_name": "仅撤销不取消 仪器",
     "planned_date": "2027-06-05",

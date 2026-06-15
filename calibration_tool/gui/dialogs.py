@@ -7,7 +7,8 @@ from ..models import (
     Instrument, CalibrationRecord, User, TransitionLog,
     STATUS_PENDING, STATUS_COMPLETED, STATUS_REVIEWING,
     STATUS_ARCHIVED, STATUS_CANCELLED, ROLE_REVIEWER,
-    parse_date, is_valid_date, _today_str, get_status_info
+    parse_date, is_valid_date, _today_str, get_status_info,
+    is_terminal_status, get_status_summary_label
 )
 from typing import Dict, Any
 
@@ -293,6 +294,7 @@ class HistoryDialog(tk.Toplevel):
         s = self.summary
         status_info = s.get("current_status_info", {})
         status_color = status_info.get("color", "#2c3e50")
+        is_terminal = s.get("is_terminal", False)
 
         outer = ttk.LabelFrame(parent, text=" 📋 操作摘要 / 流转说明 ", padding=(10, 6))
         outer.pack(fill="x", pady=(0, 4))
@@ -302,7 +304,8 @@ class HistoryDialog(tk.Toplevel):
 
         ttk.Label(grid, text="当前状态:", font=("", 9, "bold")).grid(
             row=0, column=0, sticky="e", padx=4, pady=2)
-        ttk.Label(grid, text=f"【{s['current_status']}】",
+        status_label = s.get("status_label", f"【{s['current_status']}】")
+        ttk.Label(grid, text=status_label,
                   foreground=status_color, font=("", 10, "bold")).grid(
             row=0, column=1, sticky="w", padx=4, pady=2)
 
@@ -328,7 +331,13 @@ class HistoryDialog(tk.Toplevel):
         undo_info = s.get("undo_info")
         ttk.Label(grid, text="撤销信息:", font=("", 9)).grid(
             row=4, column=0, sticky="ne", padx=4, pady=2)
-        if undo_info:
+        if undo_info and undo_info.get("is_terminal"):
+            undo_text = (
+                f"🔒 此记录处于【终态】\n"
+                f"{undo_info.get('terminal_reason', '不可撤销')}"
+            )
+            undo_color = "#7f8c8d"
+        elif undo_info:
             undo_text = (
                 f"最近可撤销操作:「{undo_info['action']}」"
                 f" (操作人: {undo_info['by_user']}, 时间: {undo_info['created_at']})\n"
@@ -355,7 +364,9 @@ class HistoryDialog(tk.Toplevel):
         actions = s.get("available_actions", [])
         ttk.Label(grid, text="下一步操作:", font=("", 9)).grid(
             row=5, column=0, sticky="ne", padx=4, pady=2)
-        if not actions:
+        if is_terminal:
+            actions_text = f"🔒 当前为【终态】: {s.get('terminal_reason', '不可再执行任何流转操作，也不可撤销。')}"
+        elif not actions:
             actions_text = "⏹ 当前状态无直接可执行的流转操作。可通过「撤销流转」回退到上一步（如有）。"
         else:
             action_parts = []

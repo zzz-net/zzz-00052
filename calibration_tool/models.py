@@ -186,7 +186,17 @@ ACTION_REVIEW_ARCHIVE = "复核归档"
 ACTION_CANCEL = "取消记录"
 ACTION_UNDO = "撤销流转"
 
-UNDOABLE_ACTIONS = [ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE, ACTION_CANCEL]
+TERMINAL_STATUSES = {STATUS_ARCHIVED}
+
+TERMINAL_RULES = {
+    STATUS_ARCHIVED: {
+        "reason": "归档为终态，校准流程全部完成，不可再撤销或变更。",
+        "cannot_cancel": True,
+        "cannot_undo": True,
+    },
+}
+
+UNDOABLE_ACTIONS = [ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_CANCEL]
 
 STATUS_RULES = {
     STATUS_PENDING: {
@@ -198,6 +208,7 @@ STATUS_RULES = {
             "撤销「取消记录」操作后回到此状态",
         ],
         "color": "#e67e22",
+        "is_terminal": False,
     },
     STATUS_COMPLETED: {
         "label": STATUS_COMPLETED,
@@ -208,24 +219,26 @@ STATUS_RULES = {
             "撤销「取消记录」操作后回到此状态",
         ],
         "color": "#27ae60",
+        "is_terminal": False,
     },
     STATUS_REVIEWING: {
         "label": STATUS_REVIEWING,
         "description": "校准结果已提交，等待复核员进行复核并归档。",
         "how_got_here": [
             "操作员或复核员执行「提交复核」操作",
-            "撤销「复核归档」操作后回到此状态",
             "撤销「取消记录」操作后回到此状态",
         ],
         "color": "#2980b9",
+        "is_terminal": False,
     },
     STATUS_ARCHIVED: {
         "label": STATUS_ARCHIVED,
-        "description": "复核员已确认并归档，校准流程全部完成。",
+        "description": "复核员已确认并归档，校准流程全部完成（终态，不可撤销）。",
         "how_got_here": [
-            "复核员执行「复核归档」操作，确认校准结果合规",
+            "复核员执行「复核归档」操作，确认校准结果合规（归档后为终态）",
         ],
         "color": "#7f8c8d",
+        "is_terminal": True,
     },
     STATUS_CANCELLED: {
         "label": STATUS_CANCELLED,
@@ -234,6 +247,7 @@ STATUS_RULES = {
             "复核员对 待执行/已完成/待复核 状态的记录执行「取消记录」操作",
         ],
         "color": "#c0392b",
+        "is_terminal": False,
     },
 }
 
@@ -266,16 +280,17 @@ ACTION_RULES = {
     },
     ACTION_REVIEW_ARCHIVE: {
         "label": ACTION_REVIEW_ARCHIVE,
-        "description": "复核员审核校准结果，填写复核意见后完成归档",
+        "description": "复核员审核校准结果，填写复核意见后完成归档（归档后为终态，不可撤销）",
         "required_role": ROLE_REVIEWER,
         "from_statuses": [STATUS_REVIEWING],
         "to_status": STATUS_ARCHIVED,
-        "to_status_description": "复核通过并归档，流程结束",
-        "undo_returns_to": STATUS_REVIEWING,
-        "undo_returns_to_description": "回到待复核状态，可重新复核",
+        "to_status_description": "复核通过并归档，流程结束（终态，不可撤销）",
+        "undo_returns_to": None,
+        "undo_returns_to_description": "归档为终态，不可撤销",
         "button_label": "复核并归档",
         "fields_required": ["复核意见"],
         "fields_optional": ["证书摘要（补充）"],
+        "is_terminal_action": True,
     },
     ACTION_CANCEL: {
         "label": ACTION_CANCEL,
@@ -357,6 +372,64 @@ def get_action_info(action: str) -> dict:
         "fields_required": [],
         "fields_optional": [],
     })
+
+
+def is_terminal_status(status: str) -> bool:
+    return status in TERMINAL_STATUSES
+
+
+def get_terminal_rule(status: str) -> Optional[dict]:
+    return TERMINAL_RULES.get(status)
+
+
+def can_undo_action(action: str) -> bool:
+    return action in UNDOABLE_ACTIONS
+
+
+def can_undo_status(status: str) -> bool:
+    if is_terminal_status(status):
+        return False
+    return True
+
+
+def can_cancel_status(status: str) -> bool:
+    rule = get_terminal_rule(status)
+    if rule and rule.get("cannot_cancel"):
+        return False
+    if status == STATUS_CANCELLED:
+        return False
+    return True
+
+
+def get_undo_denied_reason(status: str, action: str = None) -> str:
+    if is_terminal_status(status):
+        rule = get_terminal_rule(status)
+        if rule:
+            return rule["reason"]
+        return f"「{status}」为终态，不可撤销"
+    if action and not can_undo_action(action):
+        info = get_action_info(action)
+        desc = info.get("undo_returns_to_description", "该操作不可撤销")
+        return desc
+    return ""
+
+
+def get_cancel_denied_reason(status: str) -> str:
+    if is_terminal_status(status):
+        rule = get_terminal_rule(status)
+        if rule and rule.get("cannot_cancel"):
+            return f"「{status}」状态的记录无法取消"
+    if status == STATUS_CANCELLED:
+        return "记录已处于取消状态"
+    return ""
+
+
+def get_status_summary_label(status: str) -> str:
+    info = get_status_info(status)
+    label = info.get("label", status)
+    if is_terminal_status(status):
+        return f"【{label}】(终态)"
+    return f"【{label}】"
 
 
 def parse_date(s: str) -> Optional[date]:

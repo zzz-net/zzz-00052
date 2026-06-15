@@ -12,7 +12,9 @@ from calibration_tool import (
     ROLE_OPERATOR, ROLE_REVIEWER,
     ACTION_SUBMIT, ACTION_SEND_REVIEW, ACTION_REVIEW_ARCHIVE,
     ACTION_CANCEL, ACTION_UNDO,
-    _today_str, get_status_info
+    _today_str, get_status_info,
+    is_terminal_status, get_terminal_rule, can_undo_status,
+    get_undo_denied_reason, get_status_summary_label
 )
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data_verify")
@@ -52,10 +54,17 @@ def print_history(history):
 
 def print_summary(summary, title="流转摘要"):
     status_info = summary.get("current_status_info", {})
+    is_terminal = summary.get("is_terminal", False)
+    terminal_reason = summary.get("terminal_reason", "")
+    terminal_tag = " 🔒【终态】" if is_terminal else ""
+
     print(f"\n    ┌─────────────────────────────────────────────────────────────────┐")
     print(f"    │  [清单] {title:<60} │")
     print(f"    ├─────────────────────────────────────────────────────────────────┤")
-    print(f"    │  当前状态: 【{summary['current_status']}】{' '*(58 - len(summary['current_status']) * 2)}│")
+    status_display = f"【{summary['current_status']}】{terminal_tag}"
+    print(f"    │  当前状态: {status_display}{' '*(60 - len(summary['current_status']) * 2 - len(terminal_tag))}│")
+    if is_terminal and terminal_reason:
+        print(f"    │  终态原因: {terminal_reason[:62]:<62} │")
     print(f"    │  状态说明: {status_info.get('description', '')[:62]:<62} │")
     print(f"    │  为什么在这: {summary.get('why_here', '')[:60]:<60} │")
     print(f"    │  流转统计: 共 {summary.get('history_count', 0)} 条流转，{summary.get('undo_count', 0)} 条已撤销{' '*(44)}│")
@@ -63,7 +72,10 @@ def print_summary(summary, title="流转摘要"):
     print(f"    ├─────────────────────────────────────────────────────────────────┤")
 
     undo_info = summary.get("undo_info")
-    if undo_info:
+    if undo_info and undo_info.get("is_terminal"):
+        print(f"    │  [撤销] 撤销信息: 🔒 此记录处于【终态】{' '*(36)}│")
+        print(f"    │    {undo_info.get('terminal_reason', '不可撤销')[:62]:<62} │")
+    elif undo_info:
         can_tag = "[OK]可撤销" if undo_info.get("can_do") else "[!!]需复核员权限"
         print(f"    │  [撤销] 撤销信息: {can_tag}{' '*(59 - len(can_tag) * 2)}│")
         print(f"    │    最近操作: {undo_info['action']}{' '*(60 - len(undo_info['action']) * 2)}│")
@@ -77,7 +89,9 @@ def print_summary(summary, title="流转摘要"):
 
     print(f"    ├─────────────────────────────────────────────────────────────────┤")
     actions = summary.get("available_actions", [])
-    if not actions:
+    if is_terminal:
+        print(f"    │  [下一步] 下一步操作: 🔒 当前为【终态】，不可再执行任何流转{' '*(18)}│")
+    elif not actions:
         print(f"    │  [下一步] 下一步操作: 无直接流转动作，可尝试撤销流转{' '*(30)}│")
     else:
         print(f"    │  [下一步] 下一步可执行操作 ({len(actions)} 项):{' '*(45)}│")
@@ -100,10 +114,19 @@ def compare_summary_with_export(summary, csv_content, html_content, record_code)
     desc = summary["current_status_info"]["description"]
     why = summary["why_here"]
     hcount = str(summary["history_count"])
+    is_terminal = summary.get("is_terminal", False)
+    terminal_reason = summary.get("terminal_reason", "")
 
     checks.append(("CSV包含状态说明", desc in csv_content, f"CSV中应包含: '{desc[:30]}...'"))
     checks.append(("CSV包含'为什么在这'", why[:20] in csv_content, f"CSV中应包含why_here"))
     checks.append(("CSV包含流转次数", hcount in csv_content, f"CSV中应包含历史条数{hcount}"))
+    if is_terminal:
+        checks.append(("CSV包含is_terminal=是", "是" in csv_content, "CSV中is_terminal列归档记录应为'是'"))
+        checks.append(("CSV包含terminal_reason", terminal_reason in csv_content, "CSV中应包含终态原因"))
+        checks.append(("HTML包含终态列", "终态" in html_content, "HTML表格应有终态列"))
+        checks.append(("HTML包含终态原因列", "终态原因" in html_content, "HTML表格应有终态原因列"))
+        checks.append(("HTML包含终态总数卡片", "🔒 终态总数" in html_content, "HTML统计区应有终态总数卡片"))
+        checks.append(("HTML包含TERMINAL_RULES说明", "TERMINAL_RULES" in html_content, "HTML审计链路应说明规则来源"))
     checks.append(("HTML包含状态说明", desc in html_content, f"HTML中应包含状态说明"))
     checks.append(("HTML包含审计链路章节", "审计链路说明" in html_content, "HTML中应有审计链路说明"))
     checks.append(("HTML包含流转统计总览", "流转统计总览" in html_content, "HTML中应有统计总览"))
@@ -271,45 +294,57 @@ def main():
         print(f"    [ERROR] {e}")
         return 1
 
-    section("4. 归档后撤销：摘要中返回状态的逐步展示")
+    section("4. 归档为终态：不可撤销、不可取消（统一规则来源验证）")
     try:
-        sub_section("4.1 复核归档 MANUAL-001")
+        sub_section("4.1 复核归档 MANUAL-001 → 验证终态标识")
         rec = svc.review_archive(
             rec.id, rv1,
-            review_comment="流程合规，4.1归档"
+            review_comment="流程合规，4.1归档（终态）"
         )
         s_archived = svc.get_transition_summary(rec.id, rv1)
         print_summary(s_archived, "归档状态 摘要")
 
         assert s_archived["current_status"] == STATUS_ARCHIVED
-        assert s_archived["undo_info"]["action"] == ACTION_REVIEW_ARCHIVE
-        assert s_archived["undo_info"]["undo_returns_to_status"] == STATUS_REVIEWING
+        assert s_archived.get("is_terminal") == True, "归档状态应标记为终态"
+        assert s_archived.get("terminal_reason") == get_terminal_rule(STATUS_ARCHIVED)["reason"]
+        assert s_archived.get("status_label") == get_status_summary_label(STATUS_ARCHIVED)
+        assert s_archived["undo_info"]["is_terminal"] == True, "undo_info 应标记 is_terminal=True"
+        assert s_archived["undo_info"]["can_do"] == False, "终态记录不可撤销"
         assert len(s_archived["available_actions"]) == 0
-        print(f"\n    [OK] 归档状态：0个直接动作，可撤销返回=待复核，与ACTION_RULES一致")
+        assert is_terminal_status(rec.status) == True, "is_terminal_status 统一函数应返回 True"
+        assert can_undo_status(rec.status) == False, "can_undo_status 统一函数应返回 False"
+        print(f"\n    [OK] 归档为终态验证:")
+        print(f"        is_terminal_status={is_terminal_status(rec.status)}")
+        print(f"        can_undo_status={can_undo_status(rec.status)}")
+        print(f"        terminal_reason='{get_undo_denied_reason(rec.status)}'")
+        print(f"        status_label='{get_status_summary_label(rec.status)}'")
+        print(f"        undo_info.is_terminal={s_archived['undo_info']['is_terminal']}")
 
-        sub_section("4.2 第一次撤销归档 → 回到待复核")
-        rec = svc.undo_last_transition(rec.id, rv1)
-        s1 = svc.get_transition_summary(rec.id, rv1)
-        print_summary(s1, "撤销归档后（待复核）的摘要")
-        assert s1["current_status"] == STATUS_REVIEWING
-        assert s1["undo_count"] == 1
-        assert s1["undo_info"]["action"] == ACTION_SEND_REVIEW
-        assert s1["undo_info"]["undo_returns_to_status"] == STATUS_COMPLETED
-        print(f"    [OK] 撤销归档后：状态=待复核，下一步撤销提交复核→回到已完成")
+        sub_section("4.2 验证终态下撤销操作被拒绝（使用统一规则返回文案）")
+        try:
+            svc.undo_last_transition(rec.id, rv1)
+            print(f"    [FAIL] 终态记录不应允许撤销！")
+            return 1
+        except Exception as e:
+            expected_msg = get_undo_denied_reason(STATUS_ARCHIVED)
+            assert expected_msg in str(e), f"错误信息应包含统一规则文案: '{expected_msg}'"
+            print(f"    [OK] 终态撤销被拒绝，错误信息来自统一规则:")
+            print(f"        实际: '{e}'")
+            print(f"        预期: '{expected_msg}'")
 
-        sub_section("4.3 第二次撤销提交复核 → 回到已完成")
-        rec = svc.undo_last_transition(rec.id, rv1)
-        s2 = svc.get_transition_summary(rec.id, rv1)
-        assert s2["current_status"] == STATUS_COMPLETED
-        assert s2["undo_info"]["undo_returns_to_status"] == STATUS_PENDING
-        print(f"    [OK] 撤销提交复核后：状态=已完成，下一步撤销录入→回到待执行")
+        sub_section("4.3 验证终态下取消操作被拒绝")
+        try:
+            svc.cancel_record(rec.id, rv1, cancel_reason="尝试取消终态记录")
+            print(f"    [FAIL] 终态记录不应允许取消！")
+            return 1
+        except Exception as e:
+            assert STATUS_ARCHIVED in str(e) or "终态" in str(e), "错误信息应提示归档状态无法取消"
+            print(f"    [OK] 终态取消被拒绝: '{e}'")
 
-        sub_section("4.4 第三次撤销录入 → 回到待执行")
-        rec = svc.undo_last_transition(rec.id, rv1)
-        s3 = svc.get_transition_summary(rec.id, rv1)
-        assert s3["current_status"] == STATUS_PENDING
-        assert s3["undo_info"] is None
-        print(f"    [OK] 撤销录入后：状态=待执行，undo_info=None（最初始状态）")
+        sub_section("4.4 验证 storage 层 get_last_undoable_transition 对终态返回 None")
+        last_undoable = svc.storage.get_last_undoable_transition(rec.id)
+        assert last_undoable is None, "终态记录 storage 层应返回无可撤销流转"
+        print(f"    [OK] storage.get_last_undoable_transition 返回 None")
 
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -318,15 +353,13 @@ def main():
 
     section("5. 导出内容与界面摘要一致性检查（审计链路落地）")
     try:
-        sub_section("5.1 对 MANUAL-001 重新走完流程到归档，便于导出检查")
-        rec = [r for r in svc.list_records(STATUS_PENDING) if r.instrument_code == "MANUAL-001"][0]
-        rec = svc.submit_calibration(rec.id, op1, actual_date=_today_str(), result="合格",
-                                     certificate_summary="EXPORT-CERT-5.1")
-        rec = svc.send_for_review(rec.id, op1)
-        rec = svc.review_archive(rec.id, rv1, review_comment="5.1复核导出一致性测试")
-
+        sub_section("5.1 用已归档的 MANUAL-001 检查导出包含终态标识")
+        rec = [r for r in svc.list_records(STATUS_ARCHIVED) if r.instrument_code == "MANUAL-001"][0]
         summary_for_export = svc.get_transition_summary(rec.id, rv1)
-        print_summary(summary_for_export, "导出前的界面摘要（基准）")
+        print_summary(summary_for_export, "归档记录导出前的界面摘要（基准）")
+
+        assert summary_for_export.get("is_terminal") == True, "导出前摘要应包含 is_terminal=True"
+        assert "terminal_reason" in summary_for_export, "导出前摘要应包含 terminal_reason"
 
         sub_section("5.2 导出 CSV 和 HTML")
         csv_path = os.path.join(DATA_DIR, "verify_export.csv")
@@ -342,7 +375,15 @@ def main():
         print(f"    CSV: {os.path.getsize(csv_path)} 字节")
         print(f"    HTML: {os.path.getsize(html_path)} 字节")
 
-        sub_section("5.3 对比导出文件与界面摘要的关键字段")
+        sub_section("5.3 检查导出文件包含终态字段")
+        assert "is_terminal" in csv_data, "CSV 导出应包含 is_terminal 列"
+        assert "terminal_reason" in csv_data, "CSV 导出应包含 terminal_reason 列"
+        assert "终态" in html_data, "HTML 导出应包含终态列"
+        assert "终态原因" in html_data, "HTML 导出应包含终态原因列"
+        assert "🔒 终态总数" in html_data, "HTML 导出统计区应包含终态总数卡片"
+        print(f"    [OK] 导出文件包含终态标识字段")
+
+        sub_section("5.4 对比导出文件与界面摘要的关键字段")
         ok = compare_summary_with_export(summary_for_export, csv_data, html_data, rec.instrument_code)
         if not ok:
             print(f"    [WARNING] 部分检查失败，请人工核对导出文件：")
@@ -401,7 +442,7 @@ def main():
               f"undoable={snap2_after['undo_info'] is not None}")
         print(f"      总计: 记录 {total_records_after}, 历史 {total_history_after}")
 
-        sub_section("6.4 逐项一致性断言")
+        sub_section("6.4 逐项一致性断言 + 终态规则不漂移验证")
         checks = [
             ("MANUAL-001 状态一致", snap1_before["current_status"] == snap1_after["current_status"]),
             ("MANUAL-001 历史条数一致", snap1_before["history_count"] == snap1_after["history_count"]),
@@ -412,8 +453,21 @@ def main():
             ("MANUAL-002 状态一致", snap2_before["current_status"] == snap2_after["current_status"]),
             ("MANUAL-002 历史条数一致", snap2_before["history_count"] == snap2_after["history_count"]),
             ("MANUAL-002 撤销返回状态一致",
-                snap1_before["undo_info"]["undo_returns_to_status"] ==
-                snap1_after["undo_info"]["undo_returns_to_status"] if snap1_before["undo_info"] else True),
+                snap2_before["undo_info"]["undo_returns_to_status"] ==
+                snap2_after["undo_info"]["undo_returns_to_status"] if snap2_before["undo_info"] else True),
+            ("MANUAL-001 重启前 is_terminal=True", snap1_before.get("is_terminal") == True),
+            ("MANUAL-001 重启后 is_terminal=True", snap1_after.get("is_terminal") == True),
+            ("MANUAL-001 重启前 terminal_reason 存在", bool(snap1_before.get("terminal_reason"))),
+            ("MANUAL-001 重启后 terminal_reason 一致",
+                snap1_before.get("terminal_reason") == snap1_after.get("terminal_reason")),
+            ("MANUAL-001 重启前 undo_info.is_terminal=True",
+                snap1_before["undo_info"].get("is_terminal") == True),
+            ("MANUAL-001 重启后 undo_info.is_terminal=True",
+                snap1_after["undo_info"].get("is_terminal") == True),
+            ("MANUAL-001 重启前 cannot_undo", not snap1_before["undo_info"].get("can_do", False)),
+            ("MANUAL-001 重启后 cannot_undo", not snap1_after["undo_info"].get("can_do", False)),
+            ("is_terminal_status 函数一致",
+                is_terminal_status(rec_main.status) == is_terminal_status(rec_main2.status)),
             ("总记录数一致", total_records_before == total_records_after),
             ("总历史数一致", total_history_before == total_history_after),
         ]
@@ -425,7 +479,8 @@ def main():
                 all_ok = False
         assert all_ok, "重启后数据不一致！"
 
-        print(f"\n    [OK] 重启后：摘要信息、历史条数、可执行动作、撤销返回状态 完全一致")
+        print(f"\n    [OK] 重启后：摘要信息、历史条数、可执行动作、撤销返回状态、终态标识 完全一致")
+        print(f"    [OK] 终态规则不漂移验证通过：TERMINAL_RULES 定义在重启前后完全一致")
 
     except Exception as e:
         import traceback; traceback.print_exc()

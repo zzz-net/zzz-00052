@@ -1,6 +1,6 @@
 [
   {
-    "id": "8af0209b4498",
+    "id": "937f75dc619b",
     "code": "MANUAL-001",
     "name": "手动验证仪器A",
     "model": "验证型号",
@@ -14,7 +14,7 @@
     "is_active": true
   },
   {
-    "id": "4398c8d70110",
+    "id": "7f7e3ba10905",
     "code": "MANUAL-002",
     "name": "取消vs撤销 对比仪器",
     "model": "",
@@ -28,7 +28,7 @@
     "is_active": true
   },
   {
-    "id": "83cbe621f02e",
+    "id": "052269c1a105",
     "code": "MANUAL-003",
     "name": "仅撤销不取消 仪器",
     "model": "",

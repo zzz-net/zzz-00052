@@ -32,9 +32,10 @@ tr:nth-child(even) { background-color: #f9f9f9; }
 
 <div class="audit-info">
   <h3>📋 审计链路说明</h3>
-  <p><strong>数据来源：</strong>本导出文件与系统界面使用同一套流转规则定义（STATUS_RULES / ACTION_RULES），界面提示、规则校验、历史记录、导出内容共用唯一真相来源。</p>
-  <p><strong>字段说明：</strong>「状态说明」解释当前状态含义；「为什么在这」说明到达此状态的最近一次操作和原因；「最近可撤销操作」+「撤销返回状态」用于审计可追溯的回退路径。</p>
-  <p><strong>一致性保证：</strong>重启后重新打开系统，摘要、历史条数、可执行动作均从存储层加载，与导出时保持一致。</p>
+  <p><strong>数据来源：</strong>本导出文件与系统界面使用同一套流转规则定义（STATUS_RULES / ACTION_RULES / TERMINAL_RULES），界面提示、规则校验、历史记录、导出内容共用唯一真相来源。</p>
+  <p><strong>终态规则（唯一来源 TERMINAL_RULES）：</strong>归档为终态，校准流程全部完成，不可再撤销或变更。终态判断统一通过 <code>is_terminal_status()</code> 函数，所有模块共用。</p>
+  <p><strong>字段说明：</strong>「状态说明」解释当前状态含义；「为什么在这」说明到达此状态的最近一次操作和原因；「最近可撤销操作」+「撤销返回状态」用于审计可追溯的回退路径；「终态」+「终态原因」明确标识不可变更的记录。</p>
+  <p><strong>一致性保证：</strong>重启后重新打开系统，摘要、历史条数、可执行动作、终态标识均从存储层加载，与导出时保持一致。</p>
 </div>
 
 <div class="summary-section">
@@ -58,7 +59,7 @@ tr:nth-child(even) { background-color: #f9f9f9; }
       <div class="value" style="color:#2980b9;">0</div>
     </div>
     <div class="stat-card">
-      <div class="label">已归档</div>
+      <div class="label">已归档(终态)</div>
       <div class="value" style="color:#7f8c8d;">1</div>
     </div>
     <div class="stat-card">
@@ -66,25 +67,30 @@ tr:nth-child(even) { background-color: #f9f9f9; }
       <div class="value" style="color:#c0392b;">1</div>
     </div>
     <div class="stat-card">
+      <div class="label">🔒 终态总数</div>
+      <div class="value" style="color:#2c3e50;">1</div>
+    </div>
+    <div class="stat-card">
       <div class="label">流转日志总条数</div>
-      <div class="value" style="color:#8e44ad;">12</div>
+      <div class="value" style="color:#8e44ad;">6</div>
     </div>
     <div class="stat-card">
       <div class="label">当前可撤销记录数</div>
-      <div class="value" style="color:#16a085;">2</div>
+      <div class="value" style="color:#16a085;">1</div>
     </div>
   </div>
   <div class="legend">
     <div class="legend-item"><span class="legend-dot" style="background:#e67e22;"></span>待执行 - 等待操作员校准</div>
     <div class="legend-item"><span class="legend-dot" style="background:#27ae60;"></span>已完成 - 等待提交复核</div>
     <div class="legend-item"><span class="legend-dot" style="background:#2980b9;"></span>待复核 - 等待复核员归档</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#7f8c8d;"></span>归档 - 流程全部完成</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#7f8c8d;"></span>归档 - 终态，不可撤销</div>
     <div class="legend-item"><span class="legend-dot" style="background:#c0392b;"></span>取消 - 已取消可恢复</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#2c3e50;"></span>🔒 终态 - 不可变更</div>
   </div>
 </div>
 
 <table>
-<thead><tr><th>编号</th><th>仪器编号</th><th>仪器名称</th><th>计划日期</th><th>状态</th><th>状态说明</th><th>为什么在这</th><th>操作员</th><th>实际日期</th><th>结果</th><th>超期</th><th>超期原因</th><th>复核人</th><th>复核意见</th><th>证书摘要</th><th>流转次数</th><th>可撤销次数</th><th>最近可撤销操作</th><th>撤销返回状态</th><th>创建时间</th><th>归档时间</th></tr></thead>
-<tbody><tr class="status-归档"><td>8244193a32bf</td><td>MANUAL-001</td><td>手动验证仪器A</td><td>2027-05-16</td><td>归档</td><td>复核员已确认并归档，校准流程全部完成。</td><td>通过「复核归档」操作于 2026-06-15 15:57:34 到达此状态，操作人: rv1_manual，原因: 5.1复核导出一致性测试</td><td>op1_manual</td><td>2026-06-15</td><td>合格</td><td>否</td><td></td><td>rv1_manual</td><td>5.1复核导出一致性测试</td><td>EXPORT-CERT-5.1</td><td>9</td><td>3</td><td>复核归档</td><td>待复核</td><td>2026-06-15</td><td>2026-06-15</td></tr><tr class="status-取消"><td>ec3a05c8eba6</td><td>MANUAL-002</td><td>取消vs撤销 对比仪器</td><td>2027-05-31</td><td>取消</td><td>该校准计划被取消，不再执行。可通过撤销恢复。</td><td>通过「取消记录」操作于 2026-06-15 15:57:34 到达此状态，操作人: rv1_manual，原因: 此仪器送检中，3.1取消</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>1</td><td>0</td><td>取消记录</td><td>待执行</td><td>2026-06-15</td><td></td></tr><tr class="status-待执行"><td>e91dc7c260b6</td><td>MANUAL-002</td><td>取消vs撤销 对比仪器</td><td>2027-05-31</td><td>待执行</td><td>校准计划已生成，等待操作员执行实际校准工作。</td><td>通过「生成校准计划」功能创建，尚未执行任何流转操作</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>0</td><td>0</td><td></td><td></td><td>2026-06-15</td><td></td></tr><tr class="status-待执行"><td>f3aa8cf7e44d</td><td>MANUAL-003</td><td>仅撤销不取消 仪器</td><td>2027-06-05</td><td>待执行</td><td>校准计划已生成，等待操作员执行实际校准工作。</td><td>通过「撤销流转」操作从「已完成」恢复到此状态</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>2</td><td>1</td><td></td><td></td><td>2026-06-15</td><td></td></tr></tbody>
+<thead><tr><th>编号</th><th>仪器编号</th><th>仪器名称</th><th>计划日期</th><th>状态</th><th>终态</th><th>终态原因</th><th>状态说明</th><th>为什么在这</th><th>操作员</th><th>实际日期</th><th>结果</th><th>超期</th><th>超期原因</th><th>复核人</th><th>复核意见</th><th>证书摘要</th><th>流转次数</th><th>可撤销次数</th><th>最近可撤销操作</th><th>撤销返回状态</th><th>创建时间</th><th>归档时间</th></tr></thead>
+<tbody><tr class="status-归档"><td>d0aefa78af8d</td><td>MANUAL-001</td><td>手动验证仪器A</td><td>2027-05-16</td><td>归档</td><td>是(终态)</td><td>归档为终态，校准流程全部完成，不可再撤销或变更。</td><td>复核员已确认并归档，校准流程全部完成（终态，不可撤销）。</td><td>通过「复核归档」操作于 2026-06-15 17:08:47 到达此状态，操作人: rv1_manual，原因: 流程合规，4.1归档（终态）（归档为终态，校准流程全部完成，不可再撤销或变更。）</td><td>op1_manual</td><td>2026-06-15</td><td>合格</td><td>否</td><td></td><td>rv1_manual</td><td>流程合规，4.1归档（终态）</td><td>MANUAL-CERT-001</td><td>3</td><td>0</td><td></td><td></td><td>2026-06-15</td><td>2026-06-15</td></tr><tr class="status-取消"><td>62f8a298ef49</td><td>MANUAL-002</td><td>取消vs撤销 对比仪器</td><td>2027-05-31</td><td>取消</td><td>否</td><td></td><td>该校准计划被取消，不再执行。可通过撤销恢复。</td><td>通过「取消记录」操作于 2026-06-15 17:08:47 到达此状态，操作人: rv1_manual，原因: 此仪器送检中，3.1取消</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>1</td><td>0</td><td>取消记录</td><td>待执行</td><td>2026-06-15</td><td></td></tr><tr class="status-待执行"><td>732dea3b7bee</td><td>MANUAL-002</td><td>取消vs撤销 对比仪器</td><td>2027-05-31</td><td>待执行</td><td>否</td><td></td><td>校准计划已生成，等待操作员执行实际校准工作。</td><td>通过「生成校准计划」功能创建，尚未执行任何流转操作</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>0</td><td>0</td><td></td><td></td><td>2026-06-15</td><td></td></tr><tr class="status-待执行"><td>72929bd8ce44</td><td>MANUAL-003</td><td>仅撤销不取消 仪器</td><td>2027-06-05</td><td>待执行</td><td>否</td><td></td><td>校准计划已生成，等待操作员执行实际校准工作。</td><td>通过「撤销流转」操作从「已完成」恢复到此状态</td><td></td><td></td><td></td><td>否</td><td></td><td></td><td></td><td></td><td>2</td><td>1</td><td></td><td></td><td>2026-06-15</td><td></td></tr></tbody>
 </table>
 </body></html>

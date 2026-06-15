@@ -15,6 +15,8 @@ from calibration_tool import (
     ACTION_CANCEL, ACTION_UNDO,
     ValidationError, StorageError, _today_str, parse_date,
     STATUS_RULES, ACTION_RULES, get_available_actions, get_status_info, get_action_info,
+    is_terminal_status, can_undo_status, can_cancel_status,
+    get_undo_denied_reason, get_terminal_rule,
     close_logger
 )
 
@@ -151,7 +153,7 @@ class TestTransitionHistory(unittest.TestCase):
         self.assertEqual(undo_rec.status, STATUS_COMPLETED)
         self.assertEqual(undo_rec.result, "合格")
 
-    def test_archived_cannot_cancel(self):
+    def test_archived_is_terminal(self):
         rec = self._make_plan("T-005")
         self.svc.submit_calibration(
             rec.id, self.op, actual_date=_today_str(), result="合格")
@@ -161,49 +163,57 @@ class TestTransitionHistory(unittest.TestCase):
 
         rec = self.storage.get_record_by_id(rec.id)
         self.assertEqual(rec.status, STATUS_ARCHIVED)
+        self.assertTrue(is_terminal_status(rec.status), "归档应为终态")
+        self.assertFalse(can_undo_status(rec.status), "终态不可撤销")
 
         with self.assertRaises(ValidationError) as ctx:
             self.svc.cancel_record(rec.id, self.rv, cancel_reason="x")
         self.assertIn("归档", str(ctx.exception))
 
-        last = self.svc.get_undoable_transition(rec.id)
-        self.assertIsNotNone(last, "归档后应有可撤销的流转（撤销归档）")
-        self.assertEqual(last.action, ACTION_REVIEW_ARCHIVE)
+        with self.assertRaises(ValidationError) as ctx:
+            self.svc.undo_last_transition(rec.id, self.rv)
+        self.assertIn("终态", str(ctx.exception))
 
-    def test_archive_then_undo(self):
-        rec = self._make_plan("T-010")
+        last = self.svc.get_undoable_transition(rec.id)
+        self.assertIsNone(last, "归档为终态，storage层应返回无可撤销流转")
+
+        summary = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertTrue(summary.get("is_terminal"), "摘要应标记is_terminal=True")
+        self.assertTrue(summary["undo_info"].get("is_terminal"), "undo_info应标记终态")
+        self.assertFalse(summary["undo_info"].get("can_do"), "终态不可撤销")
+
+    def test_cancel_vs_undo_distinction(self):
+        rec_cancel = self._make_plan("T-CANCEL")
+        rec_undo = self._make_plan("T-UNDO")
+
         self.svc.submit_calibration(
-            rec.id, self.op, actual_date=_today_str(), result="合格",
-            certificate_summary="CERT-001")
-        self.svc.send_for_review(rec.id, self.op)
-        self.svc.review_archive(
-            rec.id, self.rv, review_comment="结果合格，同意归档")
+            rec_cancel.id, self.op, actual_date=_today_str(), result="合格",
+            certificate_summary="CERT-CANCEL")
 
-        rec = self.storage.get_record_by_id(rec.id)
-        self.assertEqual(rec.status, STATUS_ARCHIVED)
-        self.assertIsNotNone(rec.archived_at)
-        self.assertEqual(rec.reviewer, self.rv.username)
-        self.assertEqual(rec.review_comment, "结果合格，同意归档")
+        self.svc.submit_calibration(
+            rec_undo.id, self.op, actual_date=_today_str(), result="合格",
+            certificate_summary="CERT-UNDO")
 
-        undo_rec = self.svc.undo_last_transition(rec.id, self.rv)
-        self.assertEqual(undo_rec.status, STATUS_REVIEWING)
-        self.assertIsNone(undo_rec.archived_at)
-        self.assertEqual(undo_rec.reviewer, "")
-        self.assertEqual(undo_rec.review_comment, "")
-        self.assertEqual(undo_rec.certificate_summary, "CERT-001")
-        self.assertEqual(undo_rec.result, "合格")
+        rec_cancel = self.svc.cancel_record(
+            rec_cancel.id, self.rv, cancel_reason="仪器送检，取消记录")
+        s_cancel = self.svc.get_transition_summary(rec_cancel.id, self.rv)
+        self.assertEqual(s_cancel["current_status"], STATUS_CANCELLED)
+        self.assertEqual(s_cancel["undo_info"]["action"], ACTION_CANCEL)
+        self.assertIn("取消", s_cancel["why_here"])
+        self.assertEqual(rec_cancel.cancel_reason, "仪器送检，取消记录")
+        self.assertIsNotNone(rec_cancel.cancelled_by)
 
-        history = self.storage.get_history_for_record(rec.id)
-        self.assertEqual(len(history), 4)
-        self.assertEqual(history[0].action, ACTION_SUBMIT)
-        self.assertEqual(history[1].action, ACTION_SEND_REVIEW)
-        self.assertEqual(history[2].action, ACTION_REVIEW_ARCHIVE)
-        self.assertTrue(history[2].is_undone)
-        self.assertEqual(history[3].action, ACTION_UNDO)
-
-        last = self.svc.get_undoable_transition(rec.id)
-        self.assertIsNotNone(last, "撤销归档后，最近可撤销提交复核")
-        self.assertEqual(last.action, ACTION_SEND_REVIEW)
+        rec_undo = self.svc.undo_last_transition(rec_undo.id, self.rv)
+        s_undo = self.svc.get_transition_summary(rec_undo.id, self.rv)
+        self.assertEqual(s_undo["current_status"], STATUS_PENDING,
+                         "撤销流转应回到待执行，不是取消！")
+        self.assertEqual(s_undo["history_count"], 2, "共2条历史：录入 + 撤销")
+        self.assertEqual(s_undo["undo_count"], 1, "有1条已撤销的记录")
+        self.assertIn("撤销流转", s_undo["why_here"])
+        self.assertEqual(rec_undo.cancel_reason, "", "撤销流转不应写入取消原因")
+        self.assertEqual(rec_undo.cancelled_by, "", "撤销流转不应写入取消人")
+        self.assertEqual(rec_undo.result, "", "撤销流转应清空校准结果")
+        self.assertEqual(rec_undo.certificate_summary, "", "撤销流转应清空证书摘要")
 
     def test_operator_cannot_undo(self):
         rec = self._make_plan("T-006")
@@ -433,11 +443,15 @@ class TestTransitionSummary(unittest.TestCase):
         self.assertEqual(summary["current_status"], STATUS_ARCHIVED)
         self.assertEqual(summary["history_count"], 3)
         self.assertEqual(summary["undo_count"], 0)
+        self.assertTrue(summary.get("is_terminal"), "归档应为终态")
         self.assertIsNotNone(summary["undo_info"])
-        self.assertEqual(summary["undo_info"]["action"], ACTION_REVIEW_ARCHIVE)
-        self.assertEqual(summary["undo_info"]["undo_returns_to_status"], STATUS_REVIEWING)
+        self.assertTrue(summary["undo_info"]["is_terminal"], "undo_info应标记is_terminal=True")
+        self.assertEqual(summary["undo_info"]["action"], "")
+        self.assertEqual(summary["undo_info"]["undo_returns_to_status"], "")
+        self.assertFalse(summary["undo_info"]["can_do"], "终态不可撤销")
+        self.assertIn("终态", summary["undo_info"]["terminal_reason"])
         self.assertEqual(len(summary["available_actions"]), 0,
-                         "归档状态下无直接流转动作，只能撤销")
+                         "归档状态下为终态，无直接流转动作，也不可撤销")
 
     def test_transition_summary_after_cancel(self):
         rec = self._make_plan("T-S005")
@@ -578,31 +592,104 @@ class TestTransitionSummary(unittest.TestCase):
         self.assertTrue(s_op["undo_info"]["undo_role_missing"])
         self.assertTrue(s_rv["undo_info"]["can_do"], "复核员可以撤销")
 
-    def test_archive_then_undo_summary_consistency(self):
+    def test_terminal_export_summary_consistency(self):
         rec = self._make_plan("T-S012")
         self.svc.submit_calibration(rec.id, self.op,
                                     actual_date=_today_str(), result="合格")
         self.svc.send_for_review(rec.id, self.op)
-        self.svc.review_archive(rec.id, self.rv, review_comment="准备撤销归档")
+        self.svc.review_archive(rec.id, self.rv, review_comment="终态测试归档")
 
         s_before = self.svc.get_transition_summary(rec.id, self.rv)
         self.assertEqual(s_before["current_status"], STATUS_ARCHIVED)
-        self.assertEqual(s_before["undo_info"]["action"], ACTION_REVIEW_ARCHIVE)
-        self.assertEqual(s_before["undo_info"]["undo_returns_to_status"], STATUS_REVIEWING)
+        self.assertTrue(s_before.get("is_terminal"), "归档状态应标记为终态")
+        self.assertTrue(s_before["undo_info"].get("is_terminal"), "undo_info应标记is_terminal=True")
+        self.assertFalse(s_before["undo_info"].get("can_do"), "终态不可撤销")
+        self.assertIn("终态", s_before["undo_info"]["terminal_reason"])
 
-        self.svc.undo_last_transition(rec.id, self.rv)
+        import os
+        csv_path = os.path.join(self.data_dir, "test_export.csv")
+        html_path = os.path.join(self.data_dir, "test_export.html")
+        self.svc.export_csv(csv_path)
+        self.svc.export_html(html_path)
 
-        s_after = self.svc.get_transition_summary(rec.id, self.rv)
-        self.assertEqual(s_after["current_status"], STATUS_REVIEWING,
-                         "撤销归档后应回到待复核状态")
-        self.assertEqual(s_after["undo_count"], 1,
-                         "撤销后undo_count应加1")
-        self.assertEqual(s_after["history_count"], 4,
-                         "撤销归档后共4条历史：录入→提交→归档→撤销归档")
-        self.assertIsNotNone(s_after["undo_info"],
-                             "撤销归档后仍然可以继续撤销提交复核")
-        self.assertEqual(s_after["undo_info"]["action"], ACTION_SEND_REVIEW)
-        self.assertEqual(s_after["undo_info"]["undo_returns_to_status"], STATUS_COMPLETED)
+        with open(csv_path, "r", encoding="utf-8-sig") as f:
+            csv_data = f.read()
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_data = f.read()
+
+        self.assertIn("is_terminal", csv_data, "CSV应包含is_terminal列")
+        self.assertIn("terminal_reason", csv_data, "CSV应包含terminal_reason列")
+        self.assertIn("终态", html_data, "HTML表格应包含终态列")
+        self.assertIn("终态原因", html_data, "HTML表格应包含终态原因列")
+        self.assertIn("🔒 终态总数", html_data, "HTML统计区应包含终态总数卡片")
+        self.assertIn("TERMINAL_RULES", html_data, "HTML审计链路应说明规则来源")
+
+        desc = s_before["current_status_info"]["description"]
+        self.assertIn(desc, csv_data, "CSV状态说明应与摘要一致")
+        self.assertIn(desc, html_data, "HTML状态说明应与摘要一致")
+        self.assertIn(s_before["why_here"][:20], csv_data, "CSV为什么在这应与摘要一致")
+
+    def test_terminal_rules_persist_after_reload(self):
+        rec = self._make_plan("T-RESTART")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(rec.id, self.rv, review_comment="重启测试归档")
+
+        rec_before = self.storage.get_record_by_id(rec.id)
+        s_before = self.svc.get_transition_summary(rec.id, self.rv)
+        self.assertTrue(s_before.get("is_terminal"))
+        self.assertTrue(is_terminal_status(rec_before.status))
+
+        from calibration_tool import Storage as Storage2
+        from calibration_tool import CalibrationService as Service2
+        self.storage.save_records(self.storage.load_records())
+        self.storage.save_history(self.storage.load_history())
+        import gc
+        gc.collect()
+        del self.storage
+        del self.svc
+
+        storage2 = Storage2(self.data_dir)
+        svc2 = Service2(storage2)
+
+        rec_after = storage2.get_record_by_id(rec.id)
+        s_after = svc2.get_transition_summary(rec.id, self.rv)
+
+        self.assertEqual(rec_before.status, rec_after.status, "重启后状态应一致")
+        self.assertEqual(s_before["is_terminal"], s_after["is_terminal"], "重启后终态标识应一致")
+        self.assertEqual(s_before["terminal_reason"], s_after["terminal_reason"], "重启后终态原因应一致")
+        self.assertEqual(s_before["undo_info"]["is_terminal"], s_after["undo_info"]["is_terminal"],
+                         "重启后undo_info终态标识应一致")
+        self.assertEqual(s_before["undo_info"]["can_do"], s_after["undo_info"]["can_do"],
+                         "重启后can_do应一致")
+        self.assertTrue(is_terminal_status(rec_after.status), "重启后is_terminal_status仍应返回True")
+
+        with self.assertRaises(ValidationError) as ctx:
+            svc2.undo_last_transition(rec.id, self.rv)
+        self.assertIn("终态", str(ctx.exception))
+
+        self.storage = storage2
+        self.svc = svc2
+
+    def test_terminal_operator_vs_reviewer_consistency(self):
+        rec = self._make_plan("T-PERM")
+        self.svc.submit_calibration(rec.id, self.op,
+                                    actual_date=_today_str(), result="合格")
+        self.svc.send_for_review(rec.id, self.op)
+        self.svc.review_archive(rec.id, self.rv, review_comment="权限测试归档")
+
+        s_op = self.svc.get_transition_summary(rec.id, self.op)
+        s_rv = self.svc.get_transition_summary(rec.id, self.rv)
+
+        self.assertTrue(s_op.get("is_terminal"), "操作员视角也应看到终态标识")
+        self.assertTrue(s_rv.get("is_terminal"), "复核员视角也应看到终态标识")
+        self.assertEqual(s_op["is_terminal"], s_rv["is_terminal"], "不同角色终态标识一致")
+        self.assertEqual(s_op["terminal_reason"], s_rv["terminal_reason"], "不同角色终态原因一致")
+        self.assertFalse(s_op["undo_info"].get("can_do"), "操作员不可撤销终态")
+        self.assertFalse(s_rv["undo_info"].get("can_do"), "复核员也不可撤销终态")
+        self.assertEqual(len(s_op["available_actions"]), 0, "终态下操作员无可用动作")
+        self.assertEqual(len(s_rv["available_actions"]), 0, "终态下复核员无可用动作")
 
 
 def run_all():

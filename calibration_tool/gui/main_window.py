@@ -9,7 +9,7 @@ from ..models import (
     STATUS_ARCHIVED, STATUS_CANCELLED,
     ROLE_OPERATOR, ROLE_REVIEWER,
     _today_str, parse_date, TransitionLog,
-    get_status_info
+    get_status_info, is_terminal_status, get_status_summary_label
 )
 from ..storage import Storage, ValidationError, StorageError
 from ..service import CalibrationService
@@ -200,12 +200,14 @@ class App(tk.Tk):
 
         status_info = summary["current_status_info"]
         status_color = status_info.get("color", "#2c3e50")
+        status_label = summary.get("status_label", f"【{summary['current_status']}】")
         self.summary_status_lbl.configure(
-            text=f"【{summary['current_status']}】",
+            text=status_label,
             foreground=status_color,
             font=("", 11, "bold")
         )
-        self.summary_desc_lbl.configure(text=status_info.get("description", ""))
+        desc_text = status_info.get("description", "")
+        self.summary_desc_lbl.configure(text=desc_text)
         self.summary_why_lbl.configure(text=summary["why_here"])
         self.summary_history_lbl.configure(
             text=f"共 {summary['history_count']} 条流转记录，{summary['undo_count']} 条已撤销",
@@ -213,7 +215,16 @@ class App(tk.Tk):
         )
 
         undo_info = summary["undo_info"]
-        if undo_info:
+        if undo_info and undo_info.get("is_terminal"):
+            undo_parts = [
+                f"🔒 此记录处于【终态】",
+                f"{undo_info.get('terminal_reason', '不可撤销')}",
+            ]
+            self.summary_undo_lbl.configure(
+                text=" | ".join(undo_parts),
+                foreground="#7f8c8d"
+            )
+        elif undo_info:
             undo_parts = [
                 f"最近一次操作:「{undo_info['action']}」",
                 f"操作人: {undo_info['by_user']}",
@@ -237,7 +248,9 @@ class App(tk.Tk):
             self.summary_undo_lbl.configure(text="无可撤销的流转操作（此状态为初始状态或已撤销到最早状态）", foreground="#7f8c8d")
 
         actions = summary["available_actions"]
-        if not actions:
+        if summary.get("is_terminal"):
+            actions_text = f"🔒 当前为【终态】: {summary.get('terminal_reason', '不可再执行任何流转操作，也不可撤销。')}"
+        elif not actions:
             actions_text = "⏹ 当前状态无直接可执行的流转操作。可通过「撤销流转」回退到上一步（如有）。"
         else:
             action_lines = []
@@ -391,10 +404,8 @@ class App(tk.Tk):
 
         toolbar = ttk.Frame(frm)
         toolbar.pack(fill="x", pady=(0, 6))
-        ttk.Label(toolbar, text="已完成全部流程的历史记录（可撤销回到待复核）").pack(side="left")
+        ttk.Label(toolbar, text="已完成全部流程的终态记录（归档后不可撤销）").pack(side="left")
         ttk.Button(toolbar, text="查看历史", command=self.view_history).pack(
-            side="right", padx=2)
-        ttk.Button(toolbar, text="撤销上一次流转", command=self.undo_last_transition).pack(
             side="right", padx=2)
 
         cols = ("instrument_code", "instrument_name", "actual_date",
